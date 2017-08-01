@@ -2090,7 +2090,8 @@ static int s3fs_open(const char* path, struct fuse_file_info* fi)
   FdEntity*   ent;
   headers_t   meta;
   get_object_attribute(path, NULL, &meta, true, NULL, true);    // no truncate cache
-  if (NULL == (ent = FdManager::get()->Open(path, &meta, static_cast<ssize_t>(st.st_size), st.st_mtime, false, true))) {
+  //if (NULL == (ent = FdManager::get()->Open(path, &meta, static_cast<ssize_t>(st.st_size), st.st_mtime, false, true))) {
+  if (NULL == (ent = FdManager::get()->Open(path, &meta, -1, st.st_mtime, false, true))) {
     StatCache::getStatCacheData()->DelStat(path);
     return -EIO;
   }
