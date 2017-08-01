@@ -155,6 +155,10 @@ private:
 public:
     explicit FdEntity(const char* tpath = NULL, const char* cpath = NULL);
     ~FdEntity();
+    static void* UploadPerformWrapper(void* arg);
+    int UploadPerform(void);
+    int Upload(void);
+
 
     void Close(void);
     bool IsOpen(void) const { return (-1 != fd); }
