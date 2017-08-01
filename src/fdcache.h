@@ -28,14 +28,14 @@
 //------------------------------------------------
 class CacheFileStat
 {
-  private:
+private:
     std::string path;
     int         fd;
 
-  private:
+private:
     static bool MakeCacheFileStatPath(const char* path, std::string& sfile_path, bool is_create_dir = true);
 
-  public:
+public:
     static bool DeleteCacheFileStat(const char* path);
     static bool CheckCacheFileStatTopDir(void);
     static bool DeleteCacheFileStatDirectory(void);
@@ -55,15 +55,15 @@ class CacheFileStat
 // page block information
 struct fdpage
 {
-  off_t  offset;
-  size_t bytes;
-  bool   loaded;
+    off_t  offset;
+    size_t bytes;
+    bool   loaded;
 
-  fdpage(off_t start = 0, size_t size = 0, bool is_loaded = false)
-           : offset(start), bytes(size), loaded(is_loaded) {}
+    fdpage(off_t start = 0, size_t size = 0, bool is_loaded = false)
+        : offset(start), bytes(size), loaded(is_loaded) {}
 
-  off_t next(void) const { return (offset + bytes); }
-  off_t end(void) const { return (0 < bytes ? offset + bytes - 1 : 0); }
+    off_t next(void) const { return (offset + bytes); }
+    off_t end(void) const { return (0 < bytes ? offset + bytes - 1 : 0); }
 };
 typedef std::list<struct fdpage*> fdpage_list_t;
 
@@ -74,17 +74,17 @@ class FdEntity;
 //
 class PageList
 {
-  friend class FdEntity;    // only one method access directly pages.
+    friend class FdEntity;    // only one method access directly pages.
 
-  private:
+private:
     fdpage_list_t pages;
 
-  private:
+private:
     void Clear(void);
     bool Compress(void);
     bool Parse(off_t new_pos);
 
-  public:
+public:
     static void FreeList(fdpage_list_t& list);
 
     explicit PageList(size_t size = 0, bool is_loaded = false);
@@ -109,14 +109,14 @@ class PageList
 //------------------------------------------------
 class FdEntity
 {
-  private:
+private:
     pthread_mutex_t fdent_lock;
     bool            is_lock_init;
     PageList        pagelist;
     int             refcnt;         // reference count
     std::string     path;           // object path
     std::string     cachepath;      // local cache file path
-                                    // (if this is empty, does not load/save pagelist.)
+    // (if this is empty, does not load/save pagelist.)
     std::string     mirrorpath;     // mirror file path to local cache file path
     int             fd;             // file descriptor(tmp file or cache file)
     FILE*           pfile;          // file pointer(tmp file or cache file)
@@ -129,7 +129,12 @@ class FdEntity
     off_t           mp_start;       // start position for no cached multipart(write method only)
     size_t          mp_size;        // size for no cached multipart(write method only)
 
-  private:
+    OBJECT_UPLOAD_STATE upload_state;
+    pthread_mutex_t upload_lock;
+    bool            is_need_to_upload;
+
+
+private:
     static int FillFile(int fd, unsigned char byte, size_t size, off_t start);
 
     void Clear(void);
@@ -138,7 +143,7 @@ class FdEntity
     //bool SetAllStatusLoaded(void) { return SetAllStatus(true); }
     bool SetAllStatusUnloaded(void) { return SetAllStatus(false); }
 
-  public:
+public:
     explicit FdEntity(const char* tpath = NULL, const char* cpath = NULL);
     ~FdEntity();
 
@@ -182,7 +187,7 @@ typedef std::map<std::string, class FdEntity*> fdent_map_t;   // key=path, value
 //------------------------------------------------
 class FdManager
 {
-  private:
+private:
     static FdManager       singleton;
     static pthread_mutex_t fd_manager_lock;
     static pthread_mutex_t cache_cleanup_lock;
@@ -193,11 +198,11 @@ class FdManager
 
     fdent_map_t            fent;
 
-  private:
+private:
     static fsblkcnt_t GetFreeDiskSpace(const char* path);
     void CleanupCacheDirInternal(const std::string &path = "");
 
-  public:
+public:
     FdManager();
     ~FdManager();
 
