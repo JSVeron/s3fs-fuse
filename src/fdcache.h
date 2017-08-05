@@ -138,11 +138,6 @@ private:
     off_t           mp_start;       // start position for no cached multipart(write method only)
     size_t          mp_size;        // size for no cached multipart(write method only)
 
-    OBJECT_UPLOAD_STATE upload_state;
-    pthread_mutex_t upload_lock;
-    bool            is_need_to_upload;
-
-
 private:
     static int FillFile(int fd, unsigned char byte, size_t size, off_t start);
 
@@ -155,9 +150,6 @@ private:
 public:
     explicit FdEntity(const char* tpath = NULL, const char* cpath = NULL);
     ~FdEntity();
-    static void* UploadPerformWrapper(void* arg);
-    int UploadPerform(void);
-    int Upload(void);
 
 
     void Close(void);
@@ -194,6 +186,7 @@ public:
     void CleanupCache();
 };
 typedef std::map<std::string, class FdEntity*> fdent_map_t;   // key=path, value=FdEntity*
+typedef std::map<std::string, bool> delay_upload_map_t; 
 
 //------------------------------------------------
 // class FdManager
@@ -210,6 +203,9 @@ private:
     static size_t          free_disk_space; // limit free disk space
 
     fdent_map_t            fent;
+    ///////////////////
+    delay_upload_map_t uploading_map;
+    static pthread_mutex_t uploading_map_lock;
 
 private:
     static fsblkcnt_t GetFreeDiskSpace(const char* path);
@@ -218,6 +214,12 @@ private:
 public:
     FdManager();
     ~FdManager();
+
+    /////////////////////////////////
+    int FdManager::DelayFlush(const char* path);
+    static void* FdManager::DelayFlushPerformWrapper(void* arg);
+    void FdManager::DelayFlushPerform(const std::string * path);
+    ///////////////////////////////////
 
     // Reference singleton
     static FdManager* get(void) { return &singleton; }

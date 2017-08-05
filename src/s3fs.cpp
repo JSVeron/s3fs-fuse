@@ -2035,7 +2035,8 @@ static int s3fs_truncate(const char* path, off_t size)
   }
 
   // upload
-  if (0 != (result = ent->Flush(true))) {
+  //if (0 != (result = ent->Flush(true))) {
+  if (0 != (result = FdManager::get()->DelayFlush(path))) {
     S3FS_PRN_ERR("could not upload file(%s): result=%d", path, result);
     FdManager::get()->Close(ent);
     return result;

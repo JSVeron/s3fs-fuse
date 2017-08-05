@@ -641,9 +641,6 @@ FdEntity::FdEntity(const char* tpath, const char* cpath)
     pthread_mutexattr_init(&attr);
     pthread_mutexattr_settype(&attr, S3FS_MUTEX_RECURSIVE);   // recursive mutex
     pthread_mutex_init(&fdent_lock, &attr);
-    //===========================================
-    pthread_mutex_init(&upload_lock, &attr);
-    //===========================================
     is_lock_init = true;
   } catch (exception& e) {
     S3FS_PRN_CRIT("failed to init mutex");
@@ -657,9 +654,6 @@ FdEntity::~FdEntity()
   if (is_lock_init) {
     try {
       pthread_mutex_destroy(&fdent_lock);
-      //===========================================
-      pthread_mutex_destroy(&upload_lock);
-      //===========================================
 
     } catch (exception& e) {
       S3FS_PRN_CRIT("failed to destroy mutex");
@@ -1425,299 +1419,100 @@ int FdEntity::NoCacheCompleteMultipartPost(void)
   return 0;
 }
 
-int FdEntity::RowFlush(const char* tpath, bool force_sync)
-{
-  int result;
-  pthread_t   thread;
-  S3FS_PRN_ERR("===========Entry RowFlush ===============");
-  S3FS_PRN_ERR("[tpath=%s][path=%s][fd=%d]", SAFESTRPTR(tpath), path.c_str(), fd);
 
-  if (-1 == fd) {
-    return -EBADF;
-  }
-
-  if (!force_sync && !is_modify) {
-
-    return 0;
-  }
-
-//result = Upload();
-
-  S3FS_PRN_ERR("===========go on RowFlush ===============");
-
-  AutoLock auto_upload_lock(&upload_lock);
-  S3FS_PRN_ERR("===========check upload_state ===============");
-  if (upload_state != OBJECT_UPLOAD_STATE_WATING)  {
-    S3FS_PRN_ERR("===========upload pthread_create ===============");
-    int  rc;
-    upload_state = OBJECT_UPLOAD_STATE_WATING;
-    rc = pthread_create(&thread, NULL, FdEntity::UploadPerformWrapper, static_cast<void*>(this));
-    if (rc != 0) {
-      // success = false;
-      S3FS_PRN_ERR("failed pthread_create - rc(%d)", rc);
-    }
-
-  }
-  else {
-    S3FS_PRN_ERR("===========just change flag ===============");
-    is_need_to_upload = true;
-  }
-
-  return 0;
-}
-
-// thread function for performing an S3fsCurl request
-void* FdEntity::UploadPerformWrapper(void* arg)
-{
-  return  (void*)(intptr_t)(static_cast<FdEntity*>(arg)->UploadPerform());
-
-}
-
-
-
-
-int FdEntity::Upload(void)
-{
-  S3FS_PRN_ERR("===========Entry Upload ===============");
-  int result;
-  AutoLock auto_lock(&fdent_lock);
-  size_t restsize = pagelist.GetTotalUnloadedPageSize();
-  S3FS_PRN_ERR("===========Entry Upload restsize : %d==============", restsize);
-  if (0 < restsize) {
-    if (0 == upload_id.length()) {
-      if (FdManager::IsSafeDiskSpace(NULL, restsize)) {
-        if (0 != (result = Load())) {
-          S3FS_PRN_ERR("failed to upload all area(errno=%d)", result);
-          return static_cast<ssize_t>(result);
-        }
-      } else {
-
-        if (0 != (result = NoCacheLoadAndPost())) {
-          S3FS_PRN_ERR("failed to upload all area by multipart uploading(errno=%d)", result);
-          return static_cast<ssize_t>(result);
-        }
-      }
-    } else {
-
-    }
-  }
-
-  S3FS_PRN_ERR("===========Entry Upload restsize : %d==============", upload_id.length());
-  if (0 == upload_id.length()) {
-    S3FS_PRN_ERR("===========Entry Upload pagelist.Size: %d ==============", pagelist.Size());
-    if (pagelist.Size() > static_cast<size_t>(MAX_MULTIPART_CNT * S3fsCurl::GetMultipartSize())) {
-
-      S3FS_PRN_ERR("===========Entry Upload pagelist.Size() >S3fsCurl::GetMultipartSize() ==============");
-      return -ENOTSUP;
-    }
-
-    if (0 != lseek(fd, 0, SEEK_SET)) {
-      S3FS_PRN_ERR("lseek error(%d)", errno);
-      return -errno;
-    }
-
-    struct stat st;
-    memset(&st, 0, sizeof(struct stat));
-    if (-1 == fstat(fd, &st)) {
-      S3FS_PRN_ERR("fstat is failed by errno(%d), but continue...", errno);
-    }
-
-    S3FS_PRN_ERR("===========Entry Upload st.size :%d=====================", st.st_size);
-    if (pagelist.Size() >= static_cast<size_t>(2 * S3fsCurl::GetMultipartSize()) && !nomultipart) { // default 20MB
-
-      time_t backup = 0;
-      if (120 > S3fsCurl::GetReadwriteTimeout()) {
-        backup = S3fsCurl::SetReadwriteTimeout(120);
-      }
-      result = S3fsCurl::ParallelMultipartUploadRequest(path.c_str(), orgmeta, fd);
-      if (0 != backup) {
-        S3fsCurl::SetReadwriteTimeout(backup);
-      }
-    } else {
-      S3FS_PRN_ERR("===========Entry Upload 222222222222=====================");
-      S3fsCurl s3fscurl(true);
-      result = s3fscurl.PutRequest(path.c_str(), orgmeta, fd);
-    }
-
-    if (0 == result && 0 != lseek(fd, 0, SEEK_SET)) {
-      S3FS_PRN_ERR("lseek error(%d)", errno);
-      return -errno;
-    }
-    size_orgmeta = static_cast<size_t>(st.st_size);
-
-  } else {
-    S3FS_PRN_ERR("===========Entry Upload 333333333333=====================");
-    if (0 < mp_size) {
-      if (0 != (result = NoCacheMultipartPost(fd, mp_start, mp_size))) {
-        S3FS_PRN_ERR("failed to multipart post(start=%zd, size=%zu) for file(%d).", mp_start, mp_size, fd);
-        return result;
-      }
-      mp_start = 0;
-      mp_size  = 0;
-    }
-
-    if (0 != (result = NoCacheCompleteMultipartPost())) {
-      S3FS_PRN_ERR("failed to complete(finish) multipart post for file(%d).", fd);
-      return result;
-    }
-    S3FS_PRN_ERR("============ftruncate 5===========size: %d", 0);
-    if (-1 == ftruncate(fd, 0)) {
-
-      S3FS_PRN_ERR("failed to truncate file(%d) to zero, but continue...", fd);
-    }
-  }
-
-  if (0 == result) {
-    is_modify = false;
-  }
-
-  S3FS_PRN_ERR("===========Entry Upload result(%d)=====================", result);
-  return result;
-
-}
-
-
-
-int FdEntity::UploadPerform(void)
-{
-  int result;
-  int retryCount = 0;
-  S3FS_PRN_ERR("===========Entry UploadPerform ===============");
-  pthread_mutex_lock(&upload_lock);
-  upload_state = OBJECT_UPLOAD_STATE_WATING;
-  pthread_mutex_unlock(&upload_lock);
-
-  while (retryCount < 100) // MAX_RETRY_TIMES)
-  {
-    retryCount++;
-    sleep(1);
-    S3FS_PRN_ERR("===========do to check ===============");
-    AutoLock auto_lock(&upload_lock);
-    if (is_need_to_upload )
-    {
-      is_need_to_upload = false;
-      S3FS_PRN_ERR("===========somting new ,go on wait ===============");
-      continue;
-    }
-    else {
-      S3FS_PRN_ERR("===========ready to upload ===============");
-      break;
-    }
-
-
-    is_need_to_upload = false;
-  }
-
-
-
-  pthread_mutex_lock(&upload_lock);
-  upload_state = OBJECT_UPLOAD_STATE_UPLOADING;
-  pthread_mutex_unlock(&upload_lock);
-
-
-  S3FS_PRN_ERR("===========call Upload() ===============");
-  result = Upload();
-
-  pthread_mutex_lock(&upload_lock);
-  upload_state = OBJECT_UPLOAD_STATE_NONE;
-  pthread_mutex_unlock(&upload_lock);
-  return result;
-}
-
-
-/*
 int FdEntity::RowFlush(const char* tpath, bool force_sync)
 {
   int result;
 
   S3FS_PRN_INFO3("[tpath=%s][path=%s][fd=%d]", SAFESTRPTR(tpath), path.c_str(), fd);
 
-  if (-1 == fd) {
+  if(-1 == fd){
     return -EBADF;
   }
   AutoLock auto_lock(&fdent_lock);
 
-  if (!force_sync && !is_modify) {
+  if(!force_sync && !is_modify){
     // nothing to update.
     return 0;
   }
+  
 
   // If there is no loading all of the area, loading all area.
   size_t restsize = pagelist.GetTotalUnloadedPageSize();
-  if (0 < restsize) {
-    if (0 == upload_id.length()) {
+  if(0 < restsize){
+    if(0 == upload_id.length()){
       // check disk space
-      if (FdManager::IsSafeDiskSpace(NULL, restsize)) {
+      if(FdManager::IsSafeDiskSpace(NULL, restsize)){
         // enough disk space
         // Load all uninitialized area
-        if (0 != (result = Load())) {
+        if(0 != (result = Load())){
           S3FS_PRN_ERR("failed to upload all area(errno=%d)", result);
           return static_cast<ssize_t>(result);
         }
-      } else {
+      }else{
         // no enough disk space
         // upload all by multipart uploading
-        if (0 != (result = NoCacheLoadAndPost())) {
+        if(0 != (result = NoCacheLoadAndPost())){
           S3FS_PRN_ERR("failed to upload all area by multipart uploading(errno=%d)", result);
           return static_cast<ssize_t>(result);
         }
       }
-    } else {
+    }else{
       // already start multipart uploading
     }
   }
 
-  if (0 == upload_id.length()) {
+  if(0 == upload_id.length()){
     // normal uploading
 
-
+    /*
      * Make decision to do multi upload (or not) based upon file size
-     *
+     * 
      * According to the AWS spec:
      *  - 1 to 10,000 parts are allowed
      *  - minimum size of parts is 5MB (expect for the last part)
-     *
+     * 
      * For our application, we will define minimum part size to be 10MB (10 * 2^20 Bytes)
-     * minimum file size will be 64 GB - 2 ** 36
-     *
+     * minimum file size will be 64 GB - 2 ** 36 
+     * 
      * Initially uploads will be done serially
-     *
+     * 
      * If file is > 20MB, then multipart will kick in
-
-    if (pagelist.Size() > static_cast<size_t>(MAX_MULTIPART_CNT * S3fsCurl::GetMultipartSize())) {
+     */
+    if(pagelist.Size() > static_cast<size_t>(MAX_MULTIPART_CNT * S3fsCurl::GetMultipartSize())){
       // close f ?
       return -ENOTSUP;
     }
 
     // seek to head of file.
-    if (0 != lseek(fd, 0, SEEK_SET)) {
+    if(0 != lseek(fd, 0, SEEK_SET)){
       S3FS_PRN_ERR("lseek error(%d)", errno);
       return -errno;
     }
     // backup upload file size
     struct stat st;
     memset(&st, 0, sizeof(struct stat));
-    if (-1 == fstat(fd, &st)) {
+    if(-1 == fstat(fd, &st)){
       S3FS_PRN_ERR("fstat is failed by errno(%d), but continue...", errno);
     }
 
-    if (pagelist.Size() >= static_cast<size_t>(2 * S3fsCurl::GetMultipartSize()) && !nomultipart) { // default 20MB
+    if(pagelist.Size() >= static_cast<size_t>(2 * S3fsCurl::GetMultipartSize()) && !nomultipart){ // default 20MB
       // Additional time is needed for large files
       time_t backup = 0;
-      if (120 > S3fsCurl::GetReadwriteTimeout()) {
+      if(120 > S3fsCurl::GetReadwriteTimeout()){
         backup = S3fsCurl::SetReadwriteTimeout(120);
       }
       result = S3fsCurl::ParallelMultipartUploadRequest(tpath ? tpath : path.c_str(), orgmeta, fd);
-      if (0 != backup) {
+      if(0 != backup){
         S3fsCurl::SetReadwriteTimeout(backup);
       }
-    } else {
+    }else{
       S3fsCurl s3fscurl(true);
       result = s3fscurl.PutRequest(tpath ? tpath : path.c_str(), orgmeta, fd);
     }
 
     // seek to head of file.
-    if (0 == result && 0 != lseek(fd, 0, SEEK_SET)) {
+    if(0 == result && 0 != lseek(fd, 0, SEEK_SET)){
       S3FS_PRN_ERR("lseek error(%d)", errno);
       return -errno;
     }
@@ -1725,10 +1520,10 @@ int FdEntity::RowFlush(const char* tpath, bool force_sync)
     // reset uploaded file size
     size_orgmeta = static_cast<size_t>(st.st_size);
 
-  } else {
+  }else{
     // upload rest data
-    if (0 < mp_size) {
-      if (0 != (result = NoCacheMultipartPost(fd, mp_start, mp_size))) {
+    if(0 < mp_size){
+      if(0 != (result = NoCacheMultipartPost(fd, mp_start, mp_size))){
         S3FS_PRN_ERR("failed to multipart post(start=%zd, size=%zu) for file(%d).", mp_start, mp_size, fd);
         return result;
       }
@@ -1736,23 +1531,24 @@ int FdEntity::RowFlush(const char* tpath, bool force_sync)
       mp_size  = 0;
     }
     // complete multipart uploading.
-    if (0 != (result = NoCacheCompleteMultipartPost())) {
+    if(0 != (result = NoCacheCompleteMultipartPost())){
       S3FS_PRN_ERR("failed to complete(finish) multipart post for file(%d).", fd);
       return result;
     }
     // truncate file to zero
-    if (-1 == ftruncate(fd, 0)) {
+    if(-1 == ftruncate(fd, 0)){
       // So the file has already been removed, skip error.
       S3FS_PRN_ERR("failed to truncate file(%d) to zero, but continue...", fd);
     }
   }
 
-  if (0 == result) {
+  if(0 == result){
     is_modify = false;
   }
   return result;
 }
-*/
+
+
 ssize_t FdEntity::Read(char* bytes, off_t start, size_t size, bool force_load)
 {
   S3FS_PRN_DBG("[path=%s][fd=%d][offset=%jd][size=%zu]", path.c_str(), fd, (intmax_t)start, size);
@@ -1957,6 +1753,108 @@ size_t          FdManager::free_disk_space = 0;
 //------------------------------------------------
 // FdManager class methods
 //------------------------------------------------
+
+//=========================
+
+void FdManager::DelayFlushPerform(const std::string * path)
+{
+  //AutoLock auto_lock(&fdent_lock);
+  //int result;
+
+  int retryCount = 0；
+
+
+  // 等待一个静默期，应对频繁flush和fsync的场景，检查标识位，如果》1，则表示这期间又有更新，再循环等待
+  // 静默的时间间隔和最长等待次数，又配置决定,实验期，先改为固定宏
+  while(retryCount < MAX_RETRY_TIMES)
+  {
+    sleep(1000);
+    // 
+    AutoLock auto_lock(&uploading_map_lock);
+
+    std::map<std::string, bool>::iterator it;
+    it = uploading_map[path];
+    if(it == uploading_map.end())
+    { 
+      S3FS_PRN_ERR("=========== no upload task, What happend!! ===============");
+        return;    
+    }
+
+    if (it.second)
+    {
+      // need to sleep awhile and check it later.
+      S3FS_PRN_ERR("===========update flag is true, just need to sleep awhile and check it later.===============");
+      continue;
+    }
+    else{
+      // ready to do the upload work
+      //更新热点标示
+      S3FS_PRN_ERR("===========update flag to false===============");
+      it.second = false;
+      break;
+    }
+  }
+  
+
+  FdEntity* ent;
+  if(NULL == (ent = GetFdEntity(path))){
+    S3FS_PRN_ERR("=======could not find fd(file=%s)===========", path);
+    return;
+  }
+  //if(ent->GetFd() != static_cast<int>(fi->fh)){
+    //S3FS_PRN_WARN("different fd(%d - %llu)", ent->GetFd(), (unsigned long long)(fi->fh));
+  //}
+  if (0 != (result = ent->RowFlush(path, true))) {
+    S3FS_PRN_ERR("=======could not upload file(%s): result=%d==========", path, result);
+    Close(ent);
+    DelStat(path);
+    return;
+  }
+
+  return;
+}
+
+// thread function for performing an delay flush
+void* FdManager::DelayFlushPerformWrapper(void* arg) {
+   (void*)(static_cast<FdManager*>(arg[0])->DelayFlushPerform(static_cast<std::string*> arg[1]));
+   delete static_cast<std::string*> arg[1];
+   return;
+}
+
+int FdManager::DelayFlush(const char* path)
+{
+    
+  S3FS_PRN_ERR("===========go on DelayFlush ===============");
+
+  //将入要延迟下载obj path加入map，并以
+  AutoLock auto_upload_lock(&uploading_map_lock);
+  std::map<std::string,bool>::iterator it;
+  it = uploading_map[path];
+  if(it != uploading_map.end())
+  {
+    //已存在对应的下载任务，仅更新热点标示
+    S3FS_PRN_ERR("===========DelayFlush : just update flag ===============");
+    it.second = true;
+  }
+  else{
+    // 没有已存在的下载任务，加入map，开始起线程下载
+    uploading_map.insert(std::pair<std::string, int>(path, true));
+    S3FS_PRN_ERR("===========DelayFlush : upload pthread_create ===============");
+    int  rc;
+
+    std::string * strPath = new std::string(path);
+    void *arg[2] = {this, strPath};
+    rc = pthread_create(&thread, NULL, FdManager::DelayFlushPerformWrapper, static_cast<void*>(arg));
+    if (rc != 0) {
+      // success = false;
+      S3FS_PRN_ERR("failed pthread_create - rc(%d)", rc);
+    }
+  }
+
+  return 0;
+}
+//////////////
+//========================
 bool FdManager::SetCacheDir(const char* dir)
 {
   if (!dir || '\0' == dir[0]) {
@@ -2156,6 +2054,9 @@ FdManager::FdManager()
     try {
       pthread_mutex_init(&FdManager::fd_manager_lock, NULL);
       pthread_mutex_init(&FdManager::cache_cleanup_lock, NULL);
+      /////////////////////
+      pthread_mutex_init(&FdManager::uploading_map_lock, NULL);
+      ///////////////////
       FdManager::is_lock_init = true;
     } catch (exception& e) {
       FdManager::is_lock_init = false;
@@ -2179,6 +2080,9 @@ FdManager::~FdManager()
       try {
         pthread_mutex_destroy(&FdManager::fd_manager_lock);
         pthread_mutex_destroy(&FdManager::cache_cleanup_lock);
+        //===========================================
+        pthread_mutex_destroy(&uploading_map_lock);
+        //===========================================
       } catch (exception& e) {
         S3FS_PRN_CRIT("failed to init mutex");
       }
