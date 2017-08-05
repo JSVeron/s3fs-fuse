@@ -1822,11 +1822,27 @@ void FdManager::DelayFlushPerform(const std::string * path)
   return;
 }
 
+struct ThereadPara   
+{   
+    class FdManager* fdManger;  
+    std::string * strPath;   
+};  
+
 // thread function for performing an delay flush
 void * FdManager::DelayFlushPerformWrapper(void* arg) {
-  (void *)(static_cast<FdManager*>(arg[0])->DelayFlushPerform(static_cast<std::string*>(arg[1])));
-   delete (static_cast<std::string*>(arg[1]));
-   return NULL;
+
+    if(!arg){
+      return;
+    }
+
+    struct ThereadPara *pstru;
+    pstru = (struct ThereadPara *) arg;
+    if(pstru->fdManger && pstru->strPath){
+      (void *)(pstru->fdManger->DelayFlushPerform(pstru->strPath));
+      delete pstru->strPath;
+    }
+    
+    return NULL;
 }
 
 int FdManager::DelayFlush(const char* path)
@@ -1851,9 +1867,11 @@ int FdManager::DelayFlush(const char* path)
     int  rc;
     pthread_t   thread;
    
-    std::string * strPath = new std::string(path);
+    struct ThereadPara pstru;
+    thPara.fdManger = this;
+    thPara.strPath = new std::string(path);
     void *arg[2] = {this, strPath};
-    rc = pthread_create(&thread, NULL, FdManager::DelayFlushPerformWrapper, static_cast<void*>(arg));
+    rc = pthread_create(&thread, NULL, FdManager::DelayFlushPerformWrapper, static_cast<void*>(&pstru));
     if (rc != 0) {
       // success = false;
       S3FS_PRN_ERR("failed pthread_create - rc(%d)", rc);
