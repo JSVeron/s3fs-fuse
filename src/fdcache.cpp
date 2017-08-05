@@ -1804,7 +1804,7 @@ void FdManager::DelayFlushPerform(const std::string * path)
   //if(ent->GetFd() != static_cast<int>(fi->fh)){
     //S3FS_PRN_WARN("different fd(%d - %llu)", ent->GetFd(), (unsigned long long)(fi->fh));
   //}
-  if (0 != (result = ent->RowFlush(path, true))) {
+  if (0 != (result = ent->RowFlush(path, false))) {
     S3FS_PRN_ERR("=======could not upload file(%s): result=%d==========", path, result);
     Close(ent);
     DelStat(path);

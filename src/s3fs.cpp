@@ -2198,7 +2198,9 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
   FdEntity* ent;
   if (NULL != (ent = FdManager::get()->ExistOpen(path, static_cast<int>(fi->fh)))) {
     ent->UpdateMtime();
-    result = ent->Flush(false);
+    /////////////
+    result = FdManager::get()->DelayFlush(path);
+    ////////////
     FdManager::get()->Close(ent);
   }
   S3FS_MALLOCTRIM(0);
@@ -2221,6 +2223,9 @@ static int s3fs_fsync(const char* path, int datasync, struct fuse_file_info* fi)
       ent->UpdateMtime();
     }
     result = ent->Flush(false);
+      //if (0 != (result = ent->Flush(true))) {
+    esult = FdManager::get()->DelayFlush(path);
+
     FdManager::get()->Close(ent);
   }
   S3FS_MALLOCTRIM(0);
