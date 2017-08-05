@@ -638,7 +638,7 @@ int FdEntity::FillFile(int fd, unsigned char byte, size_t size, off_t start)
 //------------------------------------------------
 FdEntity::FdEntity(const char* tpath, const char* cpath)
   : is_lock_init(false), refcnt(0), path(SAFESTRPTR(tpath)), cachepath(SAFESTRPTR(cpath)), mirrorpath(""),
-    fd(-1), pfile(NULL), is_modify(false), size_orgmeta(0), upload_id(""), mp_start(0), mp_size(0), is_need_to_upload(false)
+    fd(-1), pfile(NULL), is_modify(false), size_orgmeta(0), upload_id(""), mp_start(0), mp_size(0)
 {
   try {
     pthread_mutexattr_t attr;
@@ -1764,12 +1764,12 @@ void FdManager::DelayFlushPerform(const std::string * path)
 {
   //AutoLock auto_lock(&fdent_lock);
   int result = 0;
-  int retryCount = 0；
+  int retryCount = 0;
 
   if(!path)
   {
     S3FS_PRN_ERR("===========DelayFlushPerform:  path is null===============");
-    return 
+    return; 
   }
 
   // 等待一个静默期，应对频繁flush和fsync的场景，检查标识位，如果》1，则表示这期间又有更新，再循环等待
@@ -1781,8 +1781,8 @@ void FdManager::DelayFlushPerform(const std::string * path)
     AutoLock auto_lock(&uploading_map_lock);
 
     std::map<std::string, bool>::iterator iter;
-    it = uploading_map[*path];
-    if(it == uploading_map.end())
+    iter = uploading_map.find(*path);
+    if(iter == uploading_map.end())
     { 
       S3FS_PRN_ERR("=========== no upload task, What happend!! ===============");
         return;    
@@ -1823,10 +1823,10 @@ void FdManager::DelayFlushPerform(const std::string * path)
 }
 
 // thread function for performing an delay flush
-void FdManager::DelayFlushPerformWrapper(void* arg) {
-   (void)(static_cast<FdManager*>(arg[0])->DelayFlushPerform(static_cast<std::string*> arg[1]));
-   delete static_cast<std::string*> arg[1];
-   return;
+void * FdManager::DelayFlushPerformWrapper(void* arg) {
+  (void *)(static_cast<FdManager*>(arg[0])->DelayFlushPerform(static_cast<std::string*>(arg[1])));
+   delete (static_cast<std::string*>(arg[1]));
+   return NULL;
 }
 
 int FdManager::DelayFlush(const char* path)
@@ -1837,7 +1837,7 @@ int FdManager::DelayFlush(const char* path)
   //将入要延迟下载obj path加入map，并以
   AutoLock auto_upload_lock(&uploading_map_lock);
   std::map<std::string,bool>::iterator iter;
-  iter = uploading_map[path];
+  iter = uploading_map.find(path);
   if(iter != uploading_map.end())
   {
     //已存在对应的下载任务，仅更新热点标示
@@ -1849,7 +1849,8 @@ int FdManager::DelayFlush(const char* path)
     uploading_map.insert(std::pair<std::string, int>(path, true));
     S3FS_PRN_ERR("===========DelayFlush : upload pthread_create ===============");
     int  rc;
-
+    pthread_t   thread;
+   
     std::string * strPath = new std::string(path);
     void *arg[2] = {this, strPath};
     rc = pthread_create(&thread, NULL, FdManager::DelayFlushPerformWrapper, static_cast<void*>(arg));

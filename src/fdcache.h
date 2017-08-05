@@ -216,9 +216,9 @@ public:
     ~FdManager();
 
     /////////////////////////////////
-    int FdManager::DelayFlush(const char* path);
-    static void* FdManager::DelayFlushPerformWrapper(void* arg);
-    void FdManager::DelayFlushPerform(const std::string * path);
+    int DelayFlush(const char* path);
+    static void* DelayFlushPerformWrapper(void* arg);
+    void DelayFlushPerform(const std::string * path);
     ///////////////////////////////////
 
     // Reference singleton

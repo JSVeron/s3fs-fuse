@@ -2222,9 +2222,9 @@ static int s3fs_fsync(const char* path, int datasync, struct fuse_file_info* fi)
     if (0 == datasync) {
       ent->UpdateMtime();
     }
-    result = ent->Flush(false);
+    //result = ent->Flush(false);
       //if (0 != (result = ent->Flush(true))) {
-    esult = FdManager::get()->DelayFlush(path);
+    result = FdManager::get()->DelayFlush(path);
 
     FdManager::get()->Close(ent);
   }
