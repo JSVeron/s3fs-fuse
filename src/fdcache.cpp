@@ -1765,7 +1765,7 @@ size_t          FdManager::free_disk_space = 0;
 
 void FdManager::DelayFlushPerform(const std::string * path)
 {
-  S3FS_PRN_ERR("===========Entry of DelayFlushPerformWrapper,path is %s===============", *path);
+  S3FS_PRN_ERR("===========Entry of DelayFlushPerform===============");
 
   //AutoLock auto_lock(&fdent_lock);
   int result = 0;
@@ -1781,7 +1781,7 @@ void FdManager::DelayFlushPerform(const std::string * path)
   // 静默的时间间隔和最长等待次数，又配置决定,实验期，先改为固定宏
   while(retryCount < MAX_RETRY_TIMES)
   {
-    sleep(1000);
+    sleep(1);
     // 
     AutoLock auto_lock(&uploading_map_lock);
 
