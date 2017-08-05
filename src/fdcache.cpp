@@ -1749,6 +1749,9 @@ void FdEntity::CleanupCache()
 FdManager       FdManager::singleton;
 pthread_mutex_t FdManager::fd_manager_lock;
 pthread_mutex_t FdManager::cache_cleanup_lock;
+///////////////////
+pthread_mutex_t FdManager::uploading_map_lock;
+//////////
 bool            FdManager::is_lock_init(false);
 string          FdManager::cache_dir("");
 bool            FdManager::check_cache_dir_exist(false);
@@ -1815,7 +1818,7 @@ void FdManager::DelayFlushPerform(const std::string * path)
   if (0 != (result = ent->RowFlush(path->c_str(), false))) {
     S3FS_PRN_ERR("=======could not upload file(%s): result=%d==========", path, result);
     Close(ent);
-    StatCache::getStatCacheData()->DelStat(path);
+    //StatCache::getStatCacheData()->DelStat(path);
     return;
   }
 
@@ -1832,13 +1835,13 @@ struct ThereadPara
 void * FdManager::DelayFlushPerformWrapper(void* arg) {
 
     if(!arg){
-      return;
+      return NULL;
     }
 
     struct ThereadPara *pstru;
     pstru = (struct ThereadPara *) arg;
     if(pstru->fdManger && pstru->strPath){
-      (void *)(pstru->fdManger->DelayFlushPerform(pstru->strPath));
+      pstru->fdManger->DelayFlushPerform(pstru->strPath);
       delete pstru->strPath;
     }
     
@@ -1868,9 +1871,8 @@ int FdManager::DelayFlush(const char* path)
     pthread_t   thread;
    
     struct ThereadPara pstru;
-    thPara.fdManger = this;
-    thPara.strPath = new std::string(path);
-    void *arg[2] = {this, strPath};
+    pstru.fdManger = this;
+    pstru.strPath = new std::string(path);
     rc = pthread_create(&thread, NULL, FdManager::DelayFlushPerformWrapper, static_cast<void*>(&pstru));
     if (rc != 0) {
       // success = false;
