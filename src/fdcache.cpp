@@ -54,6 +54,10 @@ using namespace std;
 //------------------------------------------------
 #define MAX_MULTIPART_CNT   10000                   // S3 multipart max count
 
+/////////////
+#define MAX_RETRY_TIMES 100
+////////////
+
 //
 // For cache directory top path
 //
@@ -1759,10 +1763,14 @@ size_t          FdManager::free_disk_space = 0;
 void FdManager::DelayFlushPerform(const std::string * path)
 {
   //AutoLock auto_lock(&fdent_lock);
-  //int result;
-
+  int result = 0;
   int retryCount = 0；
 
+  if(!path)
+  {
+    S3FS_PRN_ERR("===========DelayFlushPerform:  path is null===============");
+    return 
+  }
 
   // 等待一个静默期，应对频繁flush和fsync的场景，检查标识位，如果》1，则表示这期间又有更新，再循环等待
   // 静默的时间间隔和最长等待次数，又配置决定,实验期，先改为固定宏
@@ -1772,15 +1780,15 @@ void FdManager::DelayFlushPerform(const std::string * path)
     // 
     AutoLock auto_lock(&uploading_map_lock);
 
-    std::map<std::string, bool>::iterator it;
-    it = uploading_map[path];
+    std::map<std::string, bool>::iterator iter;
+    it = uploading_map[*path];
     if(it == uploading_map.end())
     { 
       S3FS_PRN_ERR("=========== no upload task, What happend!! ===============");
         return;    
     }
 
-    if (it.second)
+    if (iter->second)
     {
       // need to sleep awhile and check it later.
       S3FS_PRN_ERR("===========update flag is true, just need to sleep awhile and check it later.===============");
@@ -1790,24 +1798,24 @@ void FdManager::DelayFlushPerform(const std::string * path)
       // ready to do the upload work
       //更新热点标示
       S3FS_PRN_ERR("===========update flag to false===============");
-      it.second = false;
+      iter->second = false;
       break;
     }
   }
   
 
   FdEntity* ent;
-  if(NULL == (ent = GetFdEntity(path))){
+  if(NULL == (ent = GetFdEntity(path->c_str()))){
     S3FS_PRN_ERR("=======could not find fd(file=%s)===========", path);
     return;
   }
   //if(ent->GetFd() != static_cast<int>(fi->fh)){
     //S3FS_PRN_WARN("different fd(%d - %llu)", ent->GetFd(), (unsigned long long)(fi->fh));
   //}
-  if (0 != (result = ent->RowFlush(path, false))) {
+  if (0 != (result = ent->RowFlush(path->c_str(), false))) {
     S3FS_PRN_ERR("=======could not upload file(%s): result=%d==========", path, result);
     Close(ent);
-    DelStat(path);
+    StatCache::getStatCacheData()->DelStat(path);
     return;
   }
 
@@ -1815,8 +1823,8 @@ void FdManager::DelayFlushPerform(const std::string * path)
 }
 
 // thread function for performing an delay flush
-void* FdManager::DelayFlushPerformWrapper(void* arg) {
-   (void*)(static_cast<FdManager*>(arg[0])->DelayFlushPerform(static_cast<std::string*> arg[1]));
+void FdManager::DelayFlushPerformWrapper(void* arg) {
+   (void)(static_cast<FdManager*>(arg[0])->DelayFlushPerform(static_cast<std::string*> arg[1]));
    delete static_cast<std::string*> arg[1];
    return;
 }
@@ -1828,13 +1836,13 @@ int FdManager::DelayFlush(const char* path)
 
   //将入要延迟下载obj path加入map，并以
   AutoLock auto_upload_lock(&uploading_map_lock);
-  std::map<std::string,bool>::iterator it;
-  it = uploading_map[path];
-  if(it != uploading_map.end())
+  std::map<std::string,bool>::iterator iter;
+  iter = uploading_map[path];
+  if(iter != uploading_map.end())
   {
     //已存在对应的下载任务，仅更新热点标示
     S3FS_PRN_ERR("===========DelayFlush : just update flag ===============");
-    it.second = true;
+    iter->second = true;
   }
   else{
     // 没有已存在的下载任务，加入map，开始起线程下载
