@@ -1765,6 +1765,8 @@ size_t          FdManager::free_disk_space = 0;
 
 void FdManager::DelayFlushPerform(const std::string * path)
 {
+  S3FS_PRN_ERR("===========Entry of DelayFlushPerformWrapper,path is %s===============", *path);
+
   //AutoLock auto_lock(&fdent_lock);
   int result = 0;
   int retryCount = 0;
@@ -1795,6 +1797,7 @@ void FdManager::DelayFlushPerform(const std::string * path)
     {
       // need to sleep awhile and check it later.
       S3FS_PRN_ERR("===========update flag is true, just need to sleep awhile and check it later.===============");
+      iter->second = false;
       continue;
     }
     else{
@@ -1802,6 +1805,7 @@ void FdManager::DelayFlushPerform(const std::string * path)
       //更新热点标示
       S3FS_PRN_ERR("===========update flag to false===============");
       iter->second = false;
+      uploading_map.erase(iter);
       break;
     }
   }
@@ -1835,9 +1839,12 @@ struct ThereadPara
 // thread function for performing an delay flush
 void * FdManager::DelayFlushPerformWrapper(void* arg) {
 
+    S3FS_PRN_ERR("===========Entry of DelayFlushPerformWrapper ===============");
     if(!arg){
       return NULL;
     }
+
+    S3FS_PRN_ERR("===========go on DelayFlushPerformWrapper ===============");
 
     FdManager::get()->DelayFlushPerform(static_cast<std::string *>(arg));
     //struct ThereadPara *pstru;
