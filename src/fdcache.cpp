@@ -1763,7 +1763,7 @@ size_t          FdManager::free_disk_space = 0;
 
 //=========================
 
-void FdManager::DelayFlushPerform(const std::string * path)
+void FdManager::DelayFlushPerform(std::string * path)
 {
   S3FS_PRN_ERR("===========Entry of DelayFlushPerform===============");
 
@@ -1777,7 +1777,7 @@ void FdManager::DelayFlushPerform(const std::string * path)
     S3FS_PRN_ERR("===========DelayFlushPerform:  path is null===============");
     return; 
   }
-  S3FS_PRN_ERR(*path);
+  S3FS_PRN_ERR("====== path: %s ====",path->c_str());
 
   // 等待一个静默期，应对频繁flush和fsync的场景，检查标识位，如果》1，则表示这期间又有更新，再循环等待
   // 静默的时间间隔和最长等待次数，又配置决定,实验期，先改为固定宏

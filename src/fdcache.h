@@ -218,7 +218,7 @@ public:
     /////////////////////////////////
     int DelayFlush(const char* path);
     static void* DelayFlushPerformWrapper(void* arg);
-    void DelayFlushPerform(const std::string * path);
+    void DelayFlushPerform(std::string * path);
     ///////////////////////////////////
 
     // Reference singleton
