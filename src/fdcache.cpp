@@ -1769,8 +1769,13 @@ void FdManager::DelayFlushPerform(std::string * path)
 
 
   //AutoLock auto_lock(&fdent_lock);
+  bool ready2Flush = false;
   int result = 0;
   int retryCount = 0;
+  int silencePeriod = 1；
+  FdEntity* ent;
+  size_t fileSize = 0;
+  std::map<std::string, bool>::iterator iter;
 
   if(!path)
   {
@@ -1779,6 +1784,60 @@ void FdManager::DelayFlushPerform(std::string * path)
   }
   S3FS_PRN_ERR("====== path: %s ====",path->c_str());
 
+  ////////
+  while(retryCount < MAX_RETRY_TIMES)
+  {
+      
+      if(NULL == (ent = GetFdEntity(path->c_str())))
+      {
+        S3FS_PRN_ERR("=======could not find fd(file=%s)===========", path);
+        break;
+      }
+
+      // Get size
+      
+      if (!ent->GetSize(fileSize)) {
+        S3FS_PRN_ERR("could not get file size(file=%s)", path);
+        //FdManager::get()->Close(ent);
+        break;
+      }
+
+      if(fileSize > SIZE_FACTOR_UNIT){     
+        silencePeriod = fileSize/SIZE_FACTOR_UNIT; 
+        S3FS_PRN_ERR("=======next silence period is %d s===========", silencePeriod);   
+      }
+
+      // go into silence
+      sleep(silencePeriod);
+      
+      // wake up and check if ready to upload.
+      AutoLock auto_lock(&uploading_map_lock);
+
+      iter = uploading_map.find(*path);
+      if(iter == uploading_map.end())
+      { 
+          S3FS_PRN_ERR("=========== no upload task, What happend!! ===============");
+          break;    
+      }
+
+      if (iter->second)
+      {
+        // need to sleep awhile and check it later.
+        S3FS_PRN_ERR("===========update flag is true, just need to sleep awhile and check it later.===============");
+        iter->second = false;
+        continue;
+      }
+      else{
+        // ready to do the upload work
+        ready2Flush = true;
+        //更新热点标示
+        S3FS_PRN_ERR("===========update flag to false===============");
+//        iter->second = false;
+        break;
+      }
+  }
+  /////////
+  /*
   // 等待一个静默期，应对频繁flush和fsync的场景，检查标识位，如果》1，则表示这期间又有更新，再循环等待
   // 静默的时间间隔和最长等待次数，又配置决定,实验期，先改为固定宏
   while(retryCount < MAX_RETRY_TIMES)
@@ -1811,11 +1870,24 @@ void FdManager::DelayFlushPerform(std::string * path)
       break;
     }
   }
-  
+  */
+  // ensure that item has been erased
+  pthread_mutex_lock(&uploading_map_lock);
+  iter = uploading_map.find(*path);
+  if(iter != uploading_map.end()){
+      uploading_map.erase(iter);
+  }
+  pthread_mutex_unlock(&uploading_map_lock);
 
-  FdEntity* ent;
+  if(!ready2Flush)
+  {
+    S3FS_PRN_ERR("=======something wrong,just skip this flush===========");
+    return;
+  }
+
+  //FdEntity* ent;
   if(NULL == (ent = GetFdEntity(path->c_str()))){
-    S3FS_PRN_ERR("=======could not find fd(file=%s)===========", path);
+    S3FS_PRN_ERR("=======readly tp upload .but could not find fd(file=%s)===========", path);
     return;
   }
   //if(ent->GetFd() != static_cast<int>(fi->fh)){

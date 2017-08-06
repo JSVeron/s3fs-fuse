@@ -2035,8 +2035,9 @@ static int s3fs_truncate(const char* path, off_t size)
   }
 
   // upload
-  //if (0 != (result = ent->Flush(true))) {
-  if (0 != (result = FdManager::get()->DelayFlush(path))) {
+  S3FS_PRN_ERR("========= ent->Flush in s3fs_truncate==========";
+  if (0 != (result = ent->Flush(true))) {
+  //if (0 != (result = FdManager::get()->DelayFlush(path))) {
     S3FS_PRN_ERR("could not upload file(%s): result=%d", path, result);
     FdManager::get()->Close(ent);
     return result;
@@ -2198,11 +2199,29 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
   FdEntity* ent;
   if (NULL != (ent = FdManager::get()->ExistOpen(path, static_cast<int>(fi->fh)))) {
     ent->UpdateMtime();
-    /////////////
-    result = FdManager::get()->DelayFlush(path);
+ 
+    /////////////   
+    // Get size
+    size_t fileSize;
+    if (!ent->GetSize(fileSize)) {
+      S3FS_PRN_ERR("could not get file size(file=%s)", path);
+      FdManager::get()->Close(ent);
+      return -EIO;
+    }
+
+    if(fileSize < MIN_SIZE_FOR_DELAY_UPLOAD){
+      
+      result = ent->Flush(false);
+    
+    }else{    
+      
+      result = FdManager::get()->DelayFlush(path); 
+    
+    }  
     ////////////
     FdManager::get()->Close(ent);
   }
+
   S3FS_MALLOCTRIM(0);
 
   return result;
@@ -2219,15 +2238,30 @@ static int s3fs_fsync(const char* path, int datasync, struct fuse_file_info* fi)
 
   FdEntity* ent;
   if (NULL != (ent = FdManager::get()->ExistOpen(path, static_cast<int>(fi->fh)))) {
-    if (0 == datasync) {
-      ent->UpdateMtime();
+    ent->UpdateMtime();
+ 
+    /////////////   
+    // Get size
+    size_t fileSize;
+    if (!ent->GetSize(fileSize)) {
+      S3FS_PRN_ERR("could not get file size(file=%s)", path);
+      FdManager::get()->Close(ent);
+      return -EIO;
     }
-    //result = ent->Flush(false);
-      //if (0 != (result = ent->Flush(true))) {
-    result = FdManager::get()->DelayFlush(path);
 
+    if(fileSize < MIN_SIZE_FOR_DELAY_UPLOAD){
+      
+      result = ent->Flush(false);
+    
+    }else{    
+      
+      result = FdManager::get()->DelayFlush(path); 
+    
+    }  
+    ////////////
     FdManager::get()->Close(ent);
   }
+
   S3FS_MALLOCTRIM(0);
 
   // Issue 320: Delete stat cache entry because st_size may have changed.
