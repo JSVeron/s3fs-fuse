@@ -1782,6 +1782,7 @@ FdEntity* FdManager::GetTempDelayFlushFdEntity(const char* pathd)
   return NULL;
 }
 */
+
 void FdManager::DelayFlushPerform(std::string * path)
 {
   
@@ -1793,7 +1794,7 @@ void FdManager::DelayFlushPerform(std::string * path)
   int result = 0;
   int retryCount = 0;
   int silencePeriod = 1;
-  FdEntity* ent;
+  FdEntity* ent = NULL;
   size_t fileSize = 0;
   std::map<std::string, bool>::iterator iter;
 
@@ -1808,6 +1809,7 @@ void FdManager::DelayFlushPerform(std::string * path)
   while(retryCount < MAX_RETRY_TIMES)
   {
       
+      /*
       if(NULL == (ent = GetFdEntity(path->c_str())))
       {
         S3FS_PRN_ERR("=======could not find fd(file=%s), try ===========", path->c_str());
@@ -1815,6 +1817,12 @@ void FdManager::DelayFlushPerform(std::string * path)
         //{
             //
         //}
+        break;
+      }
+      */
+
+      if (NULL == (ent = FdManager::get()->ExistOpen(path))) {
+        S3FS_PRN_ERR("=======could not open path(%s) ===========", path->c_str());
         break;
       }
 
@@ -1849,6 +1857,9 @@ void FdManager::DelayFlushPerform(std::string * path)
         // need to sleep awhile and check it later.
         S3FS_PRN_ERR("===========update flag is true, just need to sleep awhile and check it later.===============");
         iter->second = false;
+        if(NULL != ent){
+            Close(ent);
+        }
         continue;
       }
       else{
@@ -1912,20 +1923,27 @@ void FdManager::DelayFlushPerform(std::string * path)
     return;
   }
 
-  //FdEntity* ent;
+  if (NULL == (ent = ExistOpen(path->c_str()))) {
+    S3FS_PRN_ERR("=======readly tp upload .but could not find file(file=%s)===========", path->c_str());
+    return;
+  }
+  /*
   if(NULL == (ent = GetFdEntity(path->c_str()))){
     S3FS_PRN_ERR("=======readly tp upload .but could not find fd(file=%s)===========", path);
     return;
   }
+  */
   //if(ent->GetFd() != static_cast<int>(fi->fh)){
     //S3FS_PRN_WARN("different fd(%d - %llu)", ent->GetFd(), (unsigned long long)(fi->fh));
   //}
   if (0 != (result = ent->RowFlush(path->c_str(), false))) {
-    S3FS_PRN_ERR("=======could not upload file(%s): result=%d==========", path, result);
-    Close(ent);
+    S3FS_PRN_ERR("=======could not upload file(%s): result=%d==========", path->c_str(), result);
+    //Close(ent);
     //StatCache::getStatCacheData()->DelStat(path);
-    return;
+    //return;
   }
+
+  Close(ent);
 
   return;
 }
@@ -2261,7 +2279,7 @@ FdEntity* FdManager::GetFdEntity(const char* path, int existfd)
   }
   return NULL;
 }
-
+FdEntity* ent = Open(path, NULL, -1, -1, false, false);
 FdEntity* FdManager::Open(const char* path, headers_t* pmeta, ssize_t size, time_t time, bool force_tmpfile, bool is_create, bool no_fd_lock_wait)
 {
   S3FS_PRN_DBG("[path=%s][size=%jd][time=%jd]", SAFESTRPTR(path), (intmax_t)size, (intmax_t)time);

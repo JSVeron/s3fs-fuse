@@ -2211,8 +2211,7 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
 
     if(fileSize < MIN_SIZE_FOR_DELAY_UPLOAD){
       
-      result = ent->Flush(false);
-      FdManager::get()->Close(ent);
+      result = ent->Flush(false);   
     
     }else{    
       
@@ -2220,7 +2219,7 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
     
     }  
     ////////////
-    
+    FdManager::get()->Close(ent);
   }
 
   S3FS_MALLOCTRIM(0);
