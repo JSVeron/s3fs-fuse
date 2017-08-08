@@ -1821,7 +1821,7 @@ void FdManager::DelayFlushPerform(std::string * path)
       }
       */
 
-      if (NULL == (ent = FdManager::get()->ExistOpen(path))) {
+      if (NULL == (ent = ExistOpen(path->c_str(), 7))) {
         S3FS_PRN_ERR("=======could not open path(%s) ===========", path->c_str());
         break;
       }
@@ -2279,7 +2279,6 @@ FdEntity* FdManager::GetFdEntity(const char* path, int existfd)
   }
   return NULL;
 }
-FdEntity* ent = Open(path, NULL, -1, -1, false, false);
 FdEntity* FdManager::Open(const char* path, headers_t* pmeta, ssize_t size, time_t time, bool force_tmpfile, bool is_create, bool no_fd_lock_wait)
 {
   S3FS_PRN_DBG("[path=%s][size=%jd][time=%jd]", SAFESTRPTR(path), (intmax_t)size, (intmax_t)time);
