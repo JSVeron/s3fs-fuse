@@ -1742,7 +1742,7 @@ void FdEntity::CleanupCache()
 // be realized.
 //
 #define NOCACHE_PATH_PREFIX_FORM    " __S3FS_UNEXISTED_PATH_%lx__ / "      // important space words for simply
-
+#define NOCACHE_PATH_PREFIX_COMMON  " __S3FS_UNEXISTED_PATH_"
 //------------------------------------------------
 // FdManager class variable
 //------------------------------------------------
@@ -1762,9 +1762,29 @@ size_t          FdManager::free_disk_space = 0;
 //------------------------------------------------
 
 //=========================
+/*
+FdEntity* FdManager::GetTempDelayFlushFdEntity(const char* pathd)
+{
+  S3FS_PRN_INFO3("[path=%s][fd=%d]", SAFESTRPTR(path), existfd);
 
+  if (!path || '\0' == path[0]) {
+    return NULL;
+  }
+  AutoLock auto_lock(&FdManager::fd_manager_lock);
+
+  for (fdent_map_t::iterator iter = fent.begin(); fent.end() != iter; ++iter) {
+      if(string::npos != (*iter).first.find(pathd) && string::npos != (*iter).first.find(NOCACHE_PATH_PREFIX_COMMON))
+      {
+          S3FS_PRN_ERR("===========Find TempDelayFlushFdEntity :%s ===============", (*iter).first.c_str());
+          return (*iter).second;
+      }
+  }
+  return NULL;
+}
+*/
 void FdManager::DelayFlushPerform(std::string * path)
 {
+  
   S3FS_PRN_ERR("===========Entry of DelayFlushPerform===============");
 
 
@@ -1790,7 +1810,11 @@ void FdManager::DelayFlushPerform(std::string * path)
       
       if(NULL == (ent = GetFdEntity(path->c_str())))
       {
-        S3FS_PRN_ERR("=======could not find fd(file=%s)===========", path);
+        S3FS_PRN_ERR("=======could not find fd(file=%s), try ===========", path->c_str());
+        //if(NULL == (ent = GetTempDelayFlushFdEntity(path->c_str())))
+        //{
+            //
+        //}
         break;
       }
 
@@ -1882,6 +1906,9 @@ void FdManager::DelayFlushPerform(std::string * path)
   if(!ready2Flush)
   {
     S3FS_PRN_ERR("=======something wrong,just skip this flush===========");
+    if(NULL != ent){
+      Close(ent);
+    }
     return;
   }
 
