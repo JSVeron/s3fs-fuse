@@ -1427,7 +1427,7 @@ int FdEntity::NoCacheCompleteMultipartPost(void)
 int FdEntity::RowFlush(const char* tpath, bool force_sync)
 {
   int result;
-
+S3FS_PRN_ERR("++++++++++++++++++++++RowFlush");
   S3FS_PRN_INFO3("[tpath=%s][path=%s][fd=%d]", SAFESTRPTR(tpath), path.c_str(), fd);
 
   if(-1 == fd){
@@ -1772,7 +1772,7 @@ void FdManager::DelayFlushPerform(std::string * path)
   bool ready2Flush = false;
   int result = 0;
   int retryCount = 0;
-  int silencePeriod = 1；
+  int silencePeriod = 1;
   FdEntity* ent;
   size_t fileSize = 0;
   std::map<std::string, bool>::iterator iter;
@@ -2272,6 +2272,8 @@ FdEntity* FdManager::Open(const char* path, headers_t* pmeta, ssize_t size, time
       S3FS_PRN_ERR("failed to make cache path for object(%s).", path);
       return NULL;
     }
+
+    S3FS_PRN_DBG("===============new FdEntity================");
     // make new obj
     ent = new FdEntity(path, cache_path.c_str());
 
