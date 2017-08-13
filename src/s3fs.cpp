@@ -1480,13 +1480,23 @@ static int s3fs_rename(const char* from, const char* to)
 
   if (0 != (result = check_parent_object_access(to, W_OK | X_OK))) {
     // not permit writing "to" object parent dir.
+    S3FS_PRN_ERR("++++++++11111111++++++++");
     return result;
   }
   if (0 != (result = check_parent_object_access(from, W_OK | X_OK))) {
     // not permit removing "from" object parent dir.
+    S3FS_PRN_ERR("++++++++222222222++++++++");
     return result;
   }
   if (0 != (result = get_object_attribute(from, &buf, NULL))) {
+    S3FS_PRN_ERR("++++++++3333333333++++++++");
+    return result;
+  }
+
+  if (-ENOENT != (result = check_object_access(to, F_OK, NULL))) {
+    if (0 == result) {
+      result = -EEXIST;
+    }
     return result;
   }
 
@@ -2215,7 +2225,8 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
     
     }else{    
       
-      result = FdManager::get()->DelayFlush(path); 
+      int delaySec = fileSize / SIZE_FACTOR_UNIT + 1;
+      result = FdManager::get()->DelayFlush(path, static_cast<int>(fi->fh), delaySec); 
     
     }  
     ////////////
@@ -2255,7 +2266,8 @@ static int s3fs_fsync(const char* path, int datasync, struct fuse_file_info* fi)
     
     }else{    
       
-      result = FdManager::get()->DelayFlush(path); 
+      int delaySec = fileSize / SIZE_FACTOR_UNIT + 1;
+      result = FdManager::get()->DelayFlush(path, static_cast<int>(fi->fh), delaySec); 
     
     }  
     ////////////

@@ -104,15 +104,6 @@ public:
     void Dump(void);
 };
 
-// ==========================================
-enum OBJECT_UPLOAD_STATE
-{
-    OBJECT_UPLOAD_STATE_NONE = 0,
-    OBJECT_UPLOAD_STATE_WATING,
-    OBJECT_UPLOAD_STATE_UPLOADING
-};
-// ==========================================
-
 //------------------------------------------------
 // class FdEntity
 //------------------------------------------------
@@ -188,6 +179,15 @@ public:
 typedef std::map<std::string, class FdEntity*> fdent_map_t;   // key=path, value=FdEntity*
 typedef std::map<std::string, bool> delay_upload_map_t; 
 
+
+// ==========================================
+struct UploadInfo{
+    int             existfd;
+    time_t          delaySecound;
+    struct timespec lastRequestTime; 
+}
+// ==========================================
+
 //------------------------------------------------
 // class FdManager
 //------------------------------------------------
@@ -216,9 +216,14 @@ public:
     ~FdManager();
 
     /////////////////////////////////
-    int DelayFlush(const char* path);
-    static void* DelayFlushPerformWrapper(void* arg);
-    void DelayFlushPerform(std::string * path);
+    //int DelayFlush(const char* path);
+    int DelayFlush(const char* path, int existfd, int delaySec);
+    static void* DelayFlushPerformWrapper(void);
+    void DelayFlushPerform(void);
+    void CreateDelayFulshWorkThread(void);
+    // private
+    bool IsReadyToUpload(const struct timespec& lastRequestTime, const time_t& delaySec);
+    //void DelayFlushPerform(std::string path);
     ///////////////////////////////////
 
     // Reference singleton
