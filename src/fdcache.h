@@ -177,15 +177,15 @@ public:
     void CleanupCache();
 };
 typedef std::map<std::string, class FdEntity*> fdent_map_t;   // key=path, value=FdEntity*
-typedef std::map<std::string, bool> delay_upload_map_t; 
+//typedef std::map<std::string, bool> delay_upload_map_t; 
 
 
 // ==========================================
 struct UploadInfo{
     int             existfd;
-    time_t          delaySecound;
+    time_t          delaySec;
     struct timespec lastRequestTime; 
-}
+};
 // ==========================================
 
 //------------------------------------------------
@@ -204,7 +204,7 @@ private:
 
     fdent_map_t            fent;
     ///////////////////
-    delay_upload_map_t uploading_map;
+    std::map<std::string, struct UploadInfo> uploading_map;
     static pthread_mutex_t uploading_map_lock;
 
 private:
@@ -218,7 +218,7 @@ public:
     /////////////////////////////////
     //int DelayFlush(const char* path);
     int DelayFlush(const char* path, int existfd, int delaySec);
-    static void* DelayFlushPerformWrapper(void);
+    static void* DelayFlushPerformWrapper(void* arg);
     void DelayFlushPerform(void);
     void CreateDelayFulshWorkThread(void);
     // private

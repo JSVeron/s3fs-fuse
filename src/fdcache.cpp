@@ -1785,11 +1785,11 @@ FdEntity* FdManager::GetTempDelayFlushFdEntity(const char* pathd)
 bool FdManager::IsReadyToUpload(const struct timespec& lastRequestTime, const time_t& delaySec)
 {
   struct timespec nowts;
-  if(-1 == s3fs_clock_gettime(CLOCK_MONOTONIC_COARSE, &nowts)){
-    ts.tv_sec  = time(NULL);
-    ts.tv_nsec = 0;
+  if(-1 == clock_gettime(CLOCK_MONOTONIC_COARSE, &nowts)){
+    nowts.tv_sec  = time(NULL);
+    nowts.tv_nsec = 0;
   }
-  return ((lastRequestTime.tv_sec + delaySec) > nowts.tv_sec);
+  return ((lastRequestTime.tv_sec + delaySec) < nowts.tv_sec);
 }
 
 
@@ -1811,12 +1811,12 @@ void FdManager::DelayFlushPerform(void)
     // begin to watch task list to do upload
     pthread_mutex_lock(&uploading_map_lock);
 
-    for(uploading_map::const_iterator iter = uploading_map.begin(); iter != uploading_map.end(); ++iter){
+    for(iter = uploading_map.begin(); iter != uploading_map.end(); ++iter){
         
         uploadInfo = iter->second;
         strUploadFilePath = iter->first;
 
-        if(IsReadyToUpload(uploadInfo.lastRequestTime, uploadInfo.delaytime)){
+        if(IsReadyToUpload(uploadInfo.lastRequestTime, uploadInfo.delaySec)){
           // ready to upload
           //uploadInfo = iter->second;
           S3FS_PRN_ERR("++++++++++++++++++File (%s) is not ready to upload, erase from map +++++++++++++", strUploadFilePath.c_str());
@@ -1835,12 +1835,13 @@ void FdManager::DelayFlushPerform(void)
 
     if(bReadyToUpload)
     {
+      FdEntity* ent;
       //reset bReadyToUpload flag
       S3FS_PRN_ERR("++++++++++readly tp upload (file=%s)++++++++++", strUploadFilePath.c_str());
       bReadyToUpload = false;
       if (NULL == (ent = ExistOpen(strUploadFilePath.c_str(), uploadInfo.existfd))) {
-        S3FS_PRN_ERR("++++++++++readly tp upload .but could not find file(file=%s)++++++++++", strUploadFilePath.c_str()));
-        continue
+        S3FS_PRN_ERR("++++++++++readly tp upload .but could not find file(file=%s)++++++++++", strUploadFilePath.c_str());
+        continue;
       }
       if (0 != (result = ent->RowFlush(strUploadFilePath.c_str(), false))) {
           S3FS_PRN_ERR("++++++++++could not upload file(%s): result=%d++++++++++", strUploadFilePath.c_str(), result);
@@ -1861,14 +1862,14 @@ int FdManager::DelayFlush(const char* path, int existfd, int delaySec)
   uploadInfo.delaySec = (time_t)delaySec; //update delayTime
 
   //update lastRequestTime
-  if(-1 == s3fs_clock_gettime(CLOCK_MONOTONIC_COARSE, &uploadInfo.lastRequestTime)){
+  if(-1 == clock_gettime(CLOCK_MONOTONIC_COARSE, &uploadInfo.lastRequestTime)){
     uploadInfo.lastRequestTime.tv_sec  = time(NULL);
     uploadInfo.lastRequestTime.tv_nsec = 0;
   }
   
   // check if ready to flush
   AutoLock auto_upload_lock(&uploading_map_lock);
-  std::map<std::string,bool>::iterator iter;
+  std::map<std::string, struct UploadInfo >::iterator iter;
 
   iter = uploading_map.find(path);
   if(iter != uploading_map.end())
@@ -2030,7 +2031,7 @@ struct ThereadPara
 void * FdManager::DelayFlushPerformWrapper(void* arg) {
 
     S3FS_PRN_ERR("++++++++++++++Entry of DelayFlushPerformWrapper +++++++++++++");
-    FdManager::get()->DelayFlushPerform(void);
+    FdManager::get()->DelayFlushPerform();
     return NULL;
 }
 
