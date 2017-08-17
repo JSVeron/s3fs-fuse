@@ -98,6 +98,14 @@ std::string cipher_suites         = "";
 s3fs_log_level debug_level        = S3FS_LOG_CRIT;
 const char*    s3fs_log_nest[S3FS_LOG_NEST_MAX] = {"", "  ", "    ", "      "};
 
+// add by morven
+off_t min_szie_to_delay_uplaod = 524288; //when/ "enable_delay_flush" is true, and file size (M) is bigger than that will be delay upload.
+int delay_upload_work_thread_num = 2;
+//int delay_upload_work_thread_num = 2;
+bool enable_delay_flush = false;
+// end
+
+
 //-------------------------------------------------------------------
 // Static variables
 //-------------------------------------------------------------------
@@ -2102,8 +2110,15 @@ static int s3fs_open(const char* path, struct fuse_file_info* fi)
   FdEntity*   ent;
   headers_t   meta;
   get_object_attribute(path, NULL, &meta, true, NULL, true);    // no truncate cache
+
+  ssize_t size = static_cast<ssize_t>(st.st_size);
+  if(0 == size)
+  {
+      size = -1;
+  }
+
   //if (NULL == (ent = FdManager::get()->Open(path, &meta, static_cast<ssize_t>(st.st_size), st.st_mtime, false, true))) {
-  if (NULL == (ent = FdManager::get()->Open(path, &meta, -1, st.st_mtime, false, true))) {
+  if (NULL == (ent = FdManager::get()->Open(path, &meta, size, st.st_mtime, false, true))) {
     StatCache::getStatCacheData()->DelStat(path);
     return -EIO;
   }
@@ -2209,7 +2224,7 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
   FdEntity* ent;
   if (NULL != (ent = FdManager::get()->ExistOpen(path, static_cast<int>(fi->fh)))) {
     ent->UpdateMtime();
- 
+
     /////////////   
     // Get size
     size_t fileSize;
@@ -2219,18 +2234,19 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
       return -EIO;
     }
 
-    if(fileSize < MIN_SIZE_FOR_DELAY_UPLOAD){
+    if(!enable_delay_flush || fileSize < min_szie_to_delay_uplaod){
       
-      result = ent->Flush(false);   
+      result = ent->Flush(false);
+
+      FdManager::get()->Close(ent);
     
     }else{    
       
       int delaySec = fileSize / SIZE_FACTOR_UNIT + 1;
-      result = FdManager::get()->DelayFlush(path, static_cast<int>(fi->fh), delaySec); 
+      result = FdManager::get()->DelayFlush(ent, path, static_cast<int>(fi->fh), delaySec); 
     
-    }  
-    ////////////
-    FdManager::get()->Close(ent);
+    }
+
   }
 
   S3FS_MALLOCTRIM(0);
@@ -2260,18 +2276,20 @@ static int s3fs_fsync(const char* path, int datasync, struct fuse_file_info* fi)
       return -EIO;
     }
 
-    if(fileSize < MIN_SIZE_FOR_DELAY_UPLOAD){
+
+    if(!enable_delay_flush || fileSize < min_szie_to_delay_uplaod){
       
       result = ent->Flush(false);
+
+      FdManager::get()->Close(ent);
     
     }else{    
       
       int delaySec = fileSize / SIZE_FACTOR_UNIT + 1;
-      result = FdManager::get()->DelayFlush(path, static_cast<int>(fi->fh), delaySec); 
+      result = FdManager::get()->DelayFlush(ent, path, static_cast<int>(fi->fh), delaySec); 
     
-    }  
-    ////////////
-    FdManager::get()->Close(ent);
+    }
+
   }
 
   S3FS_MALLOCTRIM(0);
@@ -3422,6 +3440,32 @@ static void s3fs_exit_fuseloop(int exit_status) {
   }
 }
 
+static void create_fulsh_work_thread(void)
+{
+    int  rc;
+    pthread_t   thread;
+
+    if(delay_upload_work_thread_num < 1)
+    {
+        S3FS_PRN_ERR("+++++++++The value prama delay_upload_work_thread_num is invalid. ++++++++++");
+        return;
+    }
+
+    S3FS_PRN_DBG("+++++++++create %d work thread for delay flush++++++++++", delay_upload_work_thread_num);
+
+    for(int i = 0; i < delay_upload_work_thread_num; i++)
+    {
+        rc = pthread_create(&thread, NULL, FdManager::DelayFlushPerformWrapper, NULL);
+        if (rc != 0) {
+          // success = false;
+          S3FS_PRN_ERR("failed pthread_create - rc(%d)", rc);
+        }
+        else{
+           S3FS_PRN_DBG("++++++++ success to create thread for delay fulsh work - rc(%d)+++++", rc);
+        }
+    }
+}
+
 static void* s3fs_init(struct fuse_conn_info* conn)
 {
   S3FS_PRN_CRIT("init v%s(commit:%s) with %s", VERSION, COMMIT_HASH_VAL, s3fs_crypt_lib_name());
@@ -3474,6 +3518,14 @@ static void* s3fs_init(struct fuse_conn_info* conn)
       return NULL;
     }
   }
+
+  // add by morven
+  if(enable_delay_flush)
+  {
+      create_fulsh_work_thread();
+      //return;
+  }
+
 
   // Investigate system capabilities
 #ifndef __APPLE__
@@ -4711,6 +4763,37 @@ static int my_fuse_opt_proc(void* data, const char* arg, int key, struct fuse_ar
       AdditionalHeader::get()->Dump();
       return 0;
     }
+
+    // add by morven
+    /*()
+    if (0 == STR2NCMP(arg, "qs_conf=")) {
+      string qs_conf = strchr(arg, '=') + sizeof(char);
+      if (!load_qs_config(qs_conf.c_str())) {
+        S3FS_PRN_EXIT("failed to load qs_conf file(%s).", qs_conf.c_str());
+        return -1;
+      }
+      AdditionalHeader::get()->Dump();
+      return 0;
+    }
+    */
+    if (0 == strcmp(arg, "enable_delay_flush")) {
+      enable_delay_flush = true;
+      return 0;
+    }
+    if (0 == STR2NCMP(arg, "delay_upload_work_thread_num=")) {
+      int delay_upload_work_thread_num = static_cast<int>(s3fs_strtoofft(strchr(arg, '=') + sizeof(char)));
+      if (0 >= delay_upload_work_thread_num) {
+        S3FS_PRN_EXIT("argument should be over 1: delay_upload_work_thread_num");
+        return -1;
+      }
+      return 0;
+    }
+    if (0 == STR2NCMP(arg, "min_szie_to_delay_uplaod=")) {
+      min_szie_to_delay_uplaod = static_cast<off_t>(s3fs_strtoofft(strchr(arg, '=') + sizeof(char)));
+      return 0;
+    }
+    //end of add
+
     if (0 == strcmp(arg, "noxmlns")) {
       noxmlns = true;
       return 0;

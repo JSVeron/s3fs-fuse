@@ -58,6 +58,7 @@ using namespace std;
 #define MAX_RETRY_TIMES 100
 ////////////
 
+
 //
 // For cache directory top path
 //
@@ -1852,9 +1853,8 @@ void FdManager::DelayFlushPerform(void)
   }
 }
 
-int FdManager::DelayFlush(const char* path, int existfd, int delaySec)
+int FdManager::DelayFlush(const FdEntity* ent, const char* path, int existfd, int delaySec)
 {
-  S3FS_PRN_ERR("+++++++++++go on DelayFlush +++++++++++");
   S3FS_PRN_DBG("[path=%s][existfd=%d][delaySec=%jd s]", SAFESTRPTR(path), existfd, (intmax_t)delaySec);
   struct UploadInfo uploadInfo;
   
@@ -1877,6 +1877,8 @@ int FdManager::DelayFlush(const char* path, int existfd, int delaySec)
     //已存在对应的下载任务，仅更新热点标示
     S3FS_PRN_ERR("+++++++++++DelayFlush : upload task already exits, just update uploadInfo+++++++++++"); 
     iter->second = uploadInfo;
+
+    Close(ent); // just close the ent, fd recount is larger than 1.
   }
   else{
     // 没有已存在的下载任务，加入map
@@ -1886,6 +1888,7 @@ int FdManager::DelayFlush(const char* path, int existfd, int delaySec)
 
   return 0;
 }
+/*
 void FdManager::CreateDelayFulshWorkThread(void)
 {
     int  rc;
@@ -1898,10 +1901,11 @@ void FdManager::CreateDelayFulshWorkThread(void)
       S3FS_PRN_ERR("failed pthread_create - rc(%d)", rc);
     }
     else{
-       S3FS_PRN_ERR("++++++++ success to create thread for delay fulsh work - rc(%d)", rc);
+       S3FS_PRN_ERR("++++++++ success to create thread for delay fulsh work - rc(%d)+++++", rc);
     }
 
 }
+*/
 /*
 void FdManager::DelayFlushPerform(std::string * path)
 {

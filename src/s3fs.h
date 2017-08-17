@@ -26,7 +26,7 @@
 //-------------------------------------------------------------------
 // morven 
 //-------------------------------------------------------------------
-#define MIN_SIZE_FOR_DELAY_UPLOAD   524288   // default min size for delay upload. Object bigger than that will be delay uploaded. 
+//#define MIN_SIZE_FOR_DELAY_UPLOAD   524288   // default min size for delay upload. Object bigger than that will be delay uploaded. 
 #define SIZE_FACTOR_UNIT   20971520//10485760          // As a size factor used to calculate the length of time to delay. 
 ///////////
 
