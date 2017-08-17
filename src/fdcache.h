@@ -217,7 +217,7 @@ public:
 
     /////////////////////////////////
     //int DelayFlush(const char* path);
-    int DelayFlush(const FdEntity* ent, const char* path, int existfd, int delaySec);
+    int DelayFlush(FdEntity* ent, const char* path, int existfd, int delaySec);
     static void* DelayFlushPerformWrapper(void* arg);
     void DelayFlushPerform(void);
     //void CreateDelayFulshWorkThread(void);

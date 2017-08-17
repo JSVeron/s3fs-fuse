@@ -1853,7 +1853,7 @@ void FdManager::DelayFlushPerform(void)
   }
 }
 
-int FdManager::DelayFlush(const FdEntity* ent, const char* path, int existfd, int delaySec)
+int FdManager::DelayFlush(FdEntity* ent, const char* path, int existfd, int delaySec)
 {
   S3FS_PRN_DBG("[path=%s][existfd=%d][delaySec=%jd s]", SAFESTRPTR(path), existfd, (intmax_t)delaySec);
   struct UploadInfo uploadInfo;
@@ -2299,7 +2299,7 @@ FdManager::FdManager()
       pthread_mutex_init(&FdManager::cache_cleanup_lock, NULL);
       /////////////////////
       pthread_mutex_init(&FdManager::uploading_map_lock, NULL);
-      CreateDelayFulshWorkThread();
+      //CreateDelayFulshWorkThread();
       ///////////////////
       FdManager::is_lock_init = true;
     } catch (exception& e) {
