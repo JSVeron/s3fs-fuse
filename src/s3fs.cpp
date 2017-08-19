@@ -103,6 +103,7 @@ off_t min_szie_to_delay_uplaod = 524288; //when/ "enable_delay_flush" is true, a
 int delay_upload_work_thread_num = 2;
 //int delay_upload_work_thread_num = 2;
 bool enable_delay_flush = false;
+bool enable_permission_insensitive = false;
 // end
 
 
@@ -575,6 +576,12 @@ static int check_object_access(const char* path, int mask, struct stat* pstbuf)
 
   S3FS_PRN_DBG("[path=%s]", path);
 
+  if(enable_permission_insensitive)
+  {
+    // no need to check
+    return 0;
+  }
+
   if (NULL == (pcxt = fuse_get_context())) {
     return -EIO;
   }
@@ -680,6 +687,12 @@ static int check_parent_object_access(const char* path, int mask)
   int result;
 
   S3FS_PRN_DBG("[path=%s]", path);
+
+  if(enable_permission_insensitive)
+  {
+    // no need to check
+    return 0;
+  }
 
   if (0 == strcmp(path, "/") || 0 == strcmp(path, ".")) {
     // path is mount point.
@@ -4778,6 +4791,10 @@ static int my_fuse_opt_proc(void* data, const char* arg, int key, struct fuse_ar
     */
     if (0 == strcmp(arg, "enable_delay_flush")) {
       enable_delay_flush = true;
+      return 0;
+    }
+    if (0 == strcmp(arg, "enable_permission_insensitive")) {
+      enable_permission_insensitive = true;
       return 0;
     }
     if (0 == STR2NCMP(arg, "delay_upload_work_thread_num=")) {
