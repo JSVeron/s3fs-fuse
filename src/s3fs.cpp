@@ -464,9 +464,9 @@ static int get_object_attribute(const char* path, struct stat* pstbuf, headers_t
 
   // if not found target path object, do over checking
   if (0 != result) {
-    if (overcheck) {
+      if (overcheck) {
       // when support_compat_dir is disabled, strpath maybe have "_$folder$".
-      if ('/' != strpath[strpath.length() - 1] && string::npos == strpath.find("_$folder$", 0)) {
+      	if ('/' != strpath[strpath.length() - 1] && string::npos == strpath.find("_$folder$", 0)) {
         // now path is "object", do check "object/" for over checking
         strpath    += "/";
         result      = s3fscurl.HeadRequest(strpath.c_str(), (*pheader));
@@ -575,13 +575,6 @@ static int check_object_access(const char* path, int mask, struct stat* pstbuf)
   struct fuse_context* pcxt;
 
   S3FS_PRN_DBG("[path=%s]", path);
-
-  if(enable_permission_insensitive)
-  {
-    // no need to check
-    return 0;
-  }
-
   if (NULL == (pcxt = fuse_get_context())) {
     return -EIO;
   }
@@ -687,13 +680,11 @@ static int check_parent_object_access(const char* path, int mask)
   int result;
 
   S3FS_PRN_DBG("[path=%s]", path);
-
   if(enable_permission_insensitive)
   {
     // no need to check
-    return 0;
+      return 0;
   }
-
   if (0 == strcmp(path, "/") || 0 == strcmp(path, ".")) {
     // path is mount point.
     return 0;
@@ -1064,7 +1055,7 @@ static int s3fs_mkdir(const char* path, mode_t mode)
   if (NULL == (pcxt = fuse_get_context())) {
     return -EIO;
   }
-
+                
   // check parent directory attribute.
   if (0 != (result = check_parent_object_access(path, W_OK | X_OK))) {
     return result;
