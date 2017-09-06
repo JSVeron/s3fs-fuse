@@ -2238,8 +2238,8 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
       return -EIO;
     }
 
-    if(!enable_delay_flush || fileSize < min_szie_to_delay_uplaod){
-      
+   // if(!enable_delay_flush || fileSize < min_szie_to_delay_uplaod){
+     if(!enable_delay_flush){ 
       result = ent->Flush(false);
 
       FdManager::get()->Close(ent);
@@ -2281,8 +2281,8 @@ static int s3fs_fsync(const char* path, int datasync, struct fuse_file_info* fi)
     }
 
 
-    if(!enable_delay_flush || fileSize < min_szie_to_delay_uplaod){
-      
+   // if(!enable_delay_flush || fileSize < min_szie_to_delay_uplaod){
+    if(!enable_delay_flush){  
       result = ent->Flush(false);
 
       FdManager::get()->Close(ent);
