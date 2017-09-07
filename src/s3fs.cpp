@@ -2283,21 +2283,26 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
                 S3FS_PRN_ERR("+++++++could not upload file(%s): result=%d+++++++++", strUploadFilePath.c_str(), result);
                 // if upload faild, push into the delay upload task map again.
                 is_need_retry = true;
-         }
+        }
 	
-	if(ent){
+	      if(ent){
+            // update cachestatfile delay_upload flag
+            ent->FinishDelayUpload();
             FdManager::get()->Close(ent);
             StatCache::getStatCacheData()->DelStat(strUploadFilePath.c_str());
-	}
+	      }
     }
     else{
 	 // no task is ready, so sleep awhile         
-	sleep(1);
+	     sleep(1);
     }
 
    if(is_need_retry){
             //push into the delay upload task map again.
             S3FS_PRN_ERR("+++++++push into the delay upload task map again: file(%s)+++++++++", strUploadFilePath.c_str());
+            // update cachestatfile delay_upload flag
+            ent->PareDelayUpload();
+
             uploadInfo.delaySec = 10;
             AutoLock auto_upload_lock(&upload_task_map_lock);
             upload_task_map.insert(std::pair<std::string, struct UploadInfo>(strUploadFilePath, uploadInfo));     
@@ -2386,6 +2391,7 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
     
     }else{        
       //  
+      ent->PareDelayUpload();
       int delaySec = fileSize / SIZE_FACTOR_UNIT + 1;
       result = delay_upload(path, delaySec); 
     
@@ -3697,6 +3703,10 @@ static void s3fs_destroy(void*)
   }
   // ssl
   s3fs_destroy_global_ssl();
+
+  // add by morven
+  pthread_mutex_destroy(&uploading_map_lock);
+  // end of add
 }
 
 static int s3fs_access(const char* path, int mask)

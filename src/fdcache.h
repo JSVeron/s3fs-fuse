@@ -78,7 +78,7 @@ class PageList
 
 private:
     fdpage_list_t pages;
-
+    bool isWaittingUpload;
 private:
     void Clear(void);
     bool Compress(void);
@@ -93,6 +93,10 @@ public:
     bool Init(size_t size, bool is_loaded);
     size_t Size(void) const;
     bool Resize(size_t size, bool is_loaded);
+    // add by morven
+    bool getWaitingFlag(){ return isWaittingUpload};
+    void setWaitingFlag(bool is_waitting_upload){ isWaittingUpload = is_waitting_upload};
+    // end of add
 
     bool IsPageLoaded(off_t start = 0, size_t size = 0) const;                  // size=0 is checking to end of list
     bool SetPageLoadedStatus(off_t start, size_t size, bool is_loaded = true, bool is_compress = true);
@@ -142,6 +146,11 @@ public:
     explicit FdEntity(const char* tpath = NULL, const char* cpath = NULL);
     ~FdEntity();
 
+    // add by morven
+    void PareDelayUpload();
+    void FinishDelayUpload();
+    bool IsWattingDelayUpload();
+    // end of add
 
     void Close(void);
     bool IsOpen(void) const { return (-1 != fd); }
@@ -177,7 +186,6 @@ public:
     void CleanupCache();
 };
 typedef std::map<std::string, class FdEntity*> fdent_map_t;   // key=path, value=FdEntity*
-//typedef std::map<std::string, bool> delay_upload_map_t; 
 
 
 // ==========================================
@@ -214,17 +222,6 @@ private:
 public:
     FdManager();
     ~FdManager();
-
-    /////////////////////////////////
-    //int DelayFlush(const char* path);
-    int DelayFlush(FdEntity* ent, const char* path, int existfd, int delaySec);
-    static void* DelayFlushPerformWrapper(void* arg);
-    void DelayFlushPerform(void);
-    //void CreateDelayFulshWorkThread(void);
-    // private
-    bool IsReadyToUpload(const struct timespec& lastRequestTime, const time_t& delaySec);
-    //void DelayFlushPerform(std::string path);
-    ///////////////////////////////////
 
     // Reference singleton
     static FdManager* get(void) { return &singleton; }

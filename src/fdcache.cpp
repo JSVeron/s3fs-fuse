@@ -271,6 +271,9 @@ void PageList::Clear(void)
 bool PageList::Init(size_t size, bool is_loaded)
 {
   Clear();
+  // add by morven
+  isWaittingUpload = false;
+  // end of add
   fdpage* page = new fdpage(0, size, is_loaded);
   pages.push_back(page);
   return true;
@@ -512,6 +515,10 @@ bool PageList::Serialize(CacheFileStat& file, bool is_output)
     stringstream ssall;
     ssall << Size();
 
+    // add by morven
+    ssall << "\n" << (true == isWaittingUpload) ? "1" : "0";
+    // end of add
+
     for (fdpage_list_t::iterator iter = pages.begin(); iter != pages.end(); ++iter) {
       ssall << "\n" << (*iter)->offset << ":" << (*iter)->bytes << ":" << ((*iter)->loaded ? "1" : "0");
     }
@@ -562,6 +569,16 @@ bool PageList::Serialize(CacheFileStat& file, bool is_output)
       return false;
     }
     size_t total = s3fs_strtoofft(oneline.c_str());
+
+    // add by morven
+    if (!getline(ssall, oneline, '\n')) {
+      S3FS_PRN_ERR("failed to parse stats.");
+      free(ptmp);
+      return false;
+    }
+
+    isWaittingUpload = (1 == s3fs_strtoofft(part.c_str()) ? true : false);
+    // end of add
 
     // load each part
     bool is_err = false;
@@ -1552,7 +1569,36 @@ int FdEntity::RowFlush(const char* tpath, bool force_sync)
   }
   return result;
 }
+// add by morven
+void FdEntity::PareDelayUpload()
+{
+    pagelist.setWaitingFlag(true);
+    if (0 != cachepath.size()) {
+      CacheFileStat cfstat(path.c_str());
+      if (!pagelist.Serialize(cfstat, true)) {
+        S3FS_PRN_WARN("failed to save cache stat file(%s).", path.c_str());
+      }
+    }
 
+}
+
+void FdEntity::FinishDelayUpload()
+{
+    pagelist.setWaitingFlag(false);
+    if (0 != cachepath.size()) {
+      CacheFileStat cfstat(path.c_str());
+      if (!pagelist.Serialize(cfstat, true)) {
+        S3FS_PRN_WARN("failed to save cache stat file(%s).", path.c_str());
+      }
+    }
+
+}
+
+bool FdEntity::IsWattingDelayUpload()
+{
+    return pagelist.getWaitingFlag();
+}
+// end of add
 
 ssize_t FdEntity::Read(char* bytes, off_t start, size_t size, bool force_load)
 {
@@ -1723,6 +1769,11 @@ void FdEntity::CleanupCache()
     return;
   }
 
+  if (IsWattingDelayUpload()) {
+    // this cahce file has not been uploaed, just can not be removed.
+    return;
+  }
+
   FdManager::DeleteCacheFile(path.c_str());
 }
 
@@ -1750,9 +1801,7 @@ void FdEntity::CleanupCache()
 FdManager       FdManager::singleton;
 pthread_mutex_t FdManager::fd_manager_lock;
 pthread_mutex_t FdManager::cache_cleanup_lock;
-///////////////////
-pthread_mutex_t FdManager::uploading_map_lock;
-//////////
+
 bool            FdManager::is_lock_init(false);
 string          FdManager::cache_dir("");
 bool            FdManager::check_cache_dir_exist(false);
@@ -1762,342 +1811,6 @@ size_t          FdManager::free_disk_space = 0;
 // FdManager class methods
 //------------------------------------------------
 
-//=========================
-/*
-FdEntity* FdManager::GetTempDelayFlushFdEntity(const char* pathd)
-{
-  S3FS_PRN_INFO3("[path=%s][fd=%d]", SAFESTRPTR(path), existfd);
-
-  if (!path || '\0' == path[0]) {
-    return NULL;
-  }
-  AutoLock auto_lock(&FdManager::fd_manager_lock);
-
-  for (fdent_map_t::iterator iter = fent.begin(); fent.end() != iter; ++iter) {
-      if(string::npos != (*iter).first.find(pathd) && string::npos != (*iter).first.find(NOCACHE_PATH_PREFIX_COMMON))
-      {
-          S3FS_PRN_ERR("===========Find TempDelayFlushFdEntity :%s ===============", (*iter).first.c_str());
-          return (*iter).second;
-      }
-  }
-  return NULL;
-}
-*/
-bool FdManager::IsReadyToUpload(const struct timespec& lastRequestTime, const time_t& delaySec)
-{
-  struct timespec nowts;
-  if(-1 == clock_gettime(CLOCK_MONOTONIC_COARSE, &nowts)){
-    nowts.tv_sec  = time(NULL);
-    nowts.tv_nsec = 0;
-  }
-  return ((lastRequestTime.tv_sec + delaySec) < nowts.tv_sec);
-}
-
-
-//+++++++++++ new ++++++++++++
-void FdManager::DelayFlushPerform(void)
-{
-  S3FS_PRN_ERR("++++++++++++++Entry of DelayFlushPerform+++++++++++");
-  // check if there is task to do
-  std::map<std::string, struct UploadInfo>::iterator iter;
-  bool bReadyToUpload = false;
-  struct UploadInfo uploadInfo;
-  std::string strUploadFilePath;
-  int result = 0;
-
-  while(true)
-  {
-    sleep(1);
-    
-    // begin to watch task list to do upload
-    pthread_mutex_lock(&uploading_map_lock);
-
-    for(iter = uploading_map.begin(); iter != uploading_map.end(); ++iter){
-        
-        uploadInfo = iter->second;
-        strUploadFilePath = iter->first;
-
-        if(IsReadyToUpload(uploadInfo.lastRequestTime, uploadInfo.delaySec)){
-          // ready to upload
-          //uploadInfo = iter->second;
-          S3FS_PRN_ERR("++++++++++++++++++File (%s) is not ready to upload, erase from map +++++++++++++", strUploadFilePath.c_str());
-          uploading_map.erase(iter);
-          bReadyToUpload = true;
-          break;
-
-        } else {
-            // continue
-            S3FS_PRN_ERR("++++++++++++++++++File (%s) is not ready to upload, check next one +++++++++++++++", strUploadFilePath.c_str());
-            continue;
-        }      
-    }
-    // unlock the uploading_map
-    pthread_mutex_unlock(&uploading_map_lock);
-
-    if(bReadyToUpload)
-    {
-      FdEntity* ent;
-      //reset bReadyToUpload flag
-      S3FS_PRN_ERR("++++++++++readly tp upload (file=%s)++++++++++", strUploadFilePath.c_str());
-      bReadyToUpload = false;
-      if (NULL == (ent = ExistOpen(strUploadFilePath.c_str(), uploadInfo.existfd))) {
-        S3FS_PRN_ERR("++++++++++readly tp upload .but could not find file(file=%s)++++++++++", strUploadFilePath.c_str());
-        continue;
-      }
-      if (0 != (result = ent->RowFlush(strUploadFilePath.c_str(), false))) {
-          S3FS_PRN_ERR("++++++++++could not upload file(%s): result=%d++++++++++", strUploadFilePath.c_str(), result);
-      }
-      
-      Close(ent);
-    }
-  }
-}
-
-int FdManager::DelayFlush(FdEntity* ent, const char* path, int existfd, int delaySec)
-{
-  S3FS_PRN_DBG("[path=%s][existfd=%d][delaySec=%jd s]", SAFESTRPTR(path), existfd, (intmax_t)delaySec);
-  struct UploadInfo uploadInfo;
-  
-  uploadInfo.existfd = existfd; //
-  uploadInfo.delaySec = (time_t)delaySec; //update delayTime
-
-  //update lastRequestTime
-  if(-1 == clock_gettime(CLOCK_MONOTONIC_COARSE, &uploadInfo.lastRequestTime)){
-    uploadInfo.lastRequestTime.tv_sec  = time(NULL);
-    uploadInfo.lastRequestTime.tv_nsec = 0;
-  }
-  
-  // check if ready to flush
-  AutoLock auto_upload_lock(&uploading_map_lock);
-  std::map<std::string, struct UploadInfo >::iterator iter;
-
-  iter = uploading_map.find(path);
-  if(iter != uploading_map.end())
-  {
-    //已存在对应的下载任务，仅更新热点标示
-    S3FS_PRN_ERR("+++++++++++DelayFlush : upload task already exits, just update uploadInfo+++++++++++"); 
-    iter->second = uploadInfo;
-
-    Close(ent); // just close the ent, fd recount is larger than 1.
-  }
-  else{
-    // 没有已存在的下载任务，加入map
-    uploading_map.insert(std::pair<std::string, struct UploadInfo>(path, uploadInfo));
-    S3FS_PRN_ERR("+++++++++++DelayFlush : new upload task with file (%s) +++++++++++", path);
-  }
-
-  return 0;
-}
-/*
-void FdManager::CreateDelayFulshWorkThread(void)
-{
-    int  rc;
-    pthread_t   thread;
-   
-
-    rc = pthread_create(&thread, NULL, FdManager::DelayFlushPerformWrapper, NULL);
-    if (rc != 0) {
-      // success = false;
-      S3FS_PRN_ERR("failed pthread_create - rc(%d)", rc);
-    }
-    else{
-       S3FS_PRN_ERR("++++++++ success to create thread for delay fulsh work - rc(%d)+++++", rc);
-    }
-
-}
-*/
-/*
-void FdManager::DelayFlushPerform(std::string * path)
-{
-  
-  S3FS_PRN_ERR("===========Entry of DelayFlushPerform===============");
-
-
-  //AutoLock auto_lock(&fdent_lock);
-  bool ready2Flush = false;
-  int result = 0;
-  int retryCount = 0;
-  int silencePeriod = 1;
-  FdEntity* ent = NULL;
-  size_t fileSize = 0;
-  std::map<std::string, bool>::iterator iter;
-
-  if(!path)
-  {
-    S3FS_PRN_ERR("===========DelayFlushPerform:  path is null===============");
-    return; 
-  }
-  S3FS_PRN_ERR("====== path: %s ====",path->c_str());
-
-  ////////
-  while(retryCount < MAX_RETRY_TIMES)
-  {
-
-      if (NULL == (ent = ExistOpen(path->c_str(), 7))) {
-        S3FS_PRN_ERR("=======could not open path(%s) ===========", path->c_str());
-        break;
-      }
-
-      // Get size
-      
-      if (!ent->GetSize(fileSize)) {
-        S3FS_PRN_ERR("could not get file size(file=%s)", path);
-        //FdManager::get()->Close(ent);
-        break;
-      }
-
-      if(fileSize > SIZE_FACTOR_UNIT){     
-        silencePeriod = fileSize/SIZE_FACTOR_UNIT; 
-        S3FS_PRN_ERR("=======next silence period is %d s===========", silencePeriod);   
-      }
-
-      // go into silence
-      sleep(silencePeriod);
-      
-      // wake up and check if ready to upload.
-      AutoLock auto_lock(&uploading_map_lock);
-
-      iter = uploading_map.find(*path);
-      if(iter == uploading_map.end())
-      { 
-          S3FS_PRN_ERR("=========== no upload task, What happend!! ===============");
-          break;    
-      }
-
-      if (iter->second)
-      {
-        // need to sleep awhile and check it later.
-        S3FS_PRN_ERR("===========update flag is true, just need to sleep awhile and check it later.===============");
-        iter->second = false;
-        if(NULL != ent){
-            Close(ent);
-        }
-        continue;
-      }
-      else{
-        // ready to do the upload work
-        ready2Flush = true;
-        //更新热点标示
-        S3FS_PRN_ERR("===========update flag to false===============");
-//        iter->second = false;
-        break;
-      }
-  }
-  /////////
-
-  // ensure that item has been erased
-  pthread_mutex_lock(&uploading_map_lock);
-  iter = uploading_map.find(*path);
-  if(iter != uploading_map.end()){
-      uploading_map.erase(iter);
-  }
-  pthread_mutex_unlock(&uploading_map_lock);
-
-  if(!ready2Flush)
-  {
-    S3FS_PRN_ERR("=======something wrong,just skip this flush===========");
-    if(NULL != ent){
-      Close(ent);
-    }
-    return;
-  }
-
-  if (NULL == (ent = ExistOpen(path->c_str()))) {
-    S3FS_PRN_ERR("=======readly tp upload .but could not find file(file=%s)===========", path->c_str());
-    return;
-  }
-
-  //if(ent->GetFd() != static_cast<int>(fi->fh)){
-    //S3FS_PRN_WARN("different fd(%d - %llu)", ent->GetFd(), (unsigned long long)(fi->fh));
-  //}
-  if (0 != (result = ent->RowFlush(path->c_str(), false))) {
-    S3FS_PRN_ERR("=======could not upload file(%s): result=%d==========", path->c_str(), result);
-    //Close(ent);
-    //StatCache::getStatCacheData()->DelStat(path);
-    //return;
-  }
-
-  Close(ent);
-
-  return;
-}
-*/
-
-/*
-struct ThereadPara   
-{   
-    class FdManager* fdManger;  
-    std::string * strPath;   
-}; 
-*/ 
-
-// thread function for performing an delay flush
-void * FdManager::DelayFlushPerformWrapper(void* arg) {
-
-    S3FS_PRN_ERR("++++++++++++++Entry of DelayFlushPerformWrapper +++++++++++++");
-    FdManager::get()->DelayFlushPerform();
-    return NULL;
-}
-
-/*
-void * FdManager::DelayFlushPerformWrapper(void* arg) {
-
-    S3FS_PRN_ERR("===========Entry of DelayFlushPerformWrapper ===============");
-    if(!arg){
-      return NULL;
-    }
-
-    S3FS_PRN_ERR("===========go on DelayFlushPerformWrapper ===============");
-
-    FdManager::get()->DelayFlushPerform(static_cast<std::string *>(arg));
-    //struct ThereadPara *pstru;
-    //pstru = (struct ThereadPara *) arg;
-    //if(pstru->fdManger && pstru->strPath){
-      //pstru->fdManger->DelayFlushPerform(pstru->strPath);
-      //delete pstru->strPath;
-    //}
-    
-    return NULL;
-}
-*/
-/*
-int FdManager::DelayFlush(const char* path)
-{
-    
-  S3FS_PRN_ERR("===========go on DelayFlush ===============");
-
-  //将入要延迟下载obj path加入map，并以
-  AutoLock auto_upload_lock(&uploading_map_lock);
-  std::map<std::string,bool>::iterator iter;
-  iter = uploading_map.find(path);
-  if(iter != uploading_map.end())
-  {
-    //已存在对应的下载任务，仅更新热点标示
-    S3FS_PRN_ERR("===========DelayFlush : just update flag ===============");
-    iter->second = true;
-  }
-  else{
-    // 没有已存在的下载任务，加入map，开始起线程下载
-    uploading_map.insert(std::pair<std::string, int>(path, true));
-    S3FS_PRN_ERR("===========DelayFlush : upload pthread_create ===============");
-    int  rc;
-    pthread_t   thread;
-   
-    //struct ThereadPara paraStru;
-    //paraStru.fdManger = this;
-    std::string* strPath = new std::string(path);
-    rc = pthread_create(&thread, NULL, FdManager::DelayFlushPerformWrapper, static_cast<void*>(strPath));
-    if (rc != 0) {
-      // success = false;
-      S3FS_PRN_ERR("failed pthread_create - rc(%d)", rc);
-    }
-  }
-
-  return 0;
-}
-*/
-//////////////
-//========================
 bool FdManager::SetCacheDir(const char* dir)
 {
   if (!dir || '\0' == dir[0]) {
@@ -2297,10 +2010,6 @@ FdManager::FdManager()
     try {
       pthread_mutex_init(&FdManager::fd_manager_lock, NULL);
       pthread_mutex_init(&FdManager::cache_cleanup_lock, NULL);
-      /////////////////////
-      pthread_mutex_init(&FdManager::uploading_map_lock, NULL);
-      //CreateDelayFulshWorkThread();
-      ///////////////////
       FdManager::is_lock_init = true;
     } catch (exception& e) {
       FdManager::is_lock_init = false;
@@ -2324,9 +2033,6 @@ FdManager::~FdManager()
       try {
         pthread_mutex_destroy(&FdManager::fd_manager_lock);
         pthread_mutex_destroy(&FdManager::cache_cleanup_lock);
-        //===========================================
-        pthread_mutex_destroy(&uploading_map_lock);
-        //===========================================
       } catch (exception& e) {
         S3FS_PRN_CRIT("failed to init mutex");
       }
