@@ -818,8 +818,9 @@ mode_t get_mode(headers_t& meta, const char* path, bool checkdir, bool forcedir)
       // If complement lack stat mode, when it's mode is not set any permission,
       // the object is added minimal mode only for read permission.
       if(complement_stat && 0 == (mode & (S_IRWXU | S_IRWXG | S_IRWXO))){
-        mode |= (S_IRUSR | (0 == (mode & S_IFDIR) ? 0 : S_IXUSR));
-      }
+        //mode |= (S_IRUSR | (0 == (mode & S_IFDIR) ? 0 : S_IXUSR));
+      	mode |= (S_IRWXU | S_IRWXG | S_IRWXO);
+	}
     }else{
       if(!checkdir){
         // cut dir/reg flag.
