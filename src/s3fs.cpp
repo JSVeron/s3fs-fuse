@@ -2246,7 +2246,7 @@ static void delay_task_perform(void)
           // ready to upload
           //uploadInfo = iter->second;
           S3FS_PRN_ERR("++++++++++++++++++File (%s) is not ready to upload, erase from map +++++++++++++", strUploadFilePath.c_str());
-          uploading_map.erase(iter);
+          upload_task_map.erase(iter);
           bReadyToUpload = true;
           break;
 
@@ -2265,8 +2265,7 @@ static void delay_task_perform(void)
         headers_t   meta;
         bool is_need_retry = false;
         
-
-        result = get_object_attribute(strUploadFilePath, NULL, &meta);
+        result = get_object_attribute(strUploadFilePath.c_str(), NULL, &meta);
         if (-ENOENT == result) {
           //the obj has been delete , so just cancel this task.
           S3FS_PRN_ERR("+++++++++file(%s) has been delete ,just cancel this task++++++", strUploadFilePath);
