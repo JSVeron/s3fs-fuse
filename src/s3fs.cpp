@@ -82,6 +82,11 @@ typedef struct incomplete_multipart_info {
 
 typedef std::list<UNCOMP_MP_INFO> uncomp_mp_list_t;
 
+// add by morven
+std::map<std::string, struct UploadInfo> upload_task_map;
+static pthread_mutex_t upload_task_map_lock;
+// end of add
+
 //-------------------------------------------------------------------
 // Global variables
 //-------------------------------------------------------------------
@@ -2230,9 +2235,9 @@ static void delay_task_perform(void)
   {
 
     // begin to watch task list to do upload
-    pthread_mutex_lock(&uploading_map_lock);
+    pthread_mutex_lock(&upload_task_map_lock);
 
-    for(iter = uploading_map.begin(); iter != uploading_map.end(); ++iter){
+    for(iter = upload_task_map.begin(); iter != upload_task_map.end(); ++iter){
         
         uploadInfo = iter->second;
         strUploadFilePath = iter->first;
@@ -2252,34 +2257,35 @@ static void delay_task_perform(void)
         }      
     }
     // unlock the uploading_map
-    pthread_mutex_unlock(&uploading_map_lock);
+    pthread_mutex_unlock(&upload_task_map_lock);
 
     if(bReadyToUpload)
     {
         FdEntity*   ent;
         headers_t   meta;
         bool is_need_retry = false;
+        
 
-        result = get_object_attribute(path, mask, &st);
+        result = get_object_attribute(strUploadFilePath, NULL, &meta);
         if (-ENOENT == result) {
           //the obj has been delete , so just cancel this task.
-          S3FS_PRN_ERR("+++++++++file(%s) has been delete ,just cancel this task++++++", path);
+          S3FS_PRN_ERR("+++++++++file(%s) has been delete ,just cancel this task++++++", strUploadFilePath);
         }
         else if (0 == result 
-                && NULL != (ent = FdManager::get()->Open(path, &meta, -1, st.st_mtime, false, true))
-                && 0 != (result = ent->RowFlush(path, true))) 
+                && NULL != (ent = FdManager::get()->Open(strUploadFilePath, &meta, -1, st.st_mtime, false, true))
+                && 0 != (result = ent->RowFlush(strUploadFilePath, true))) 
             {
-                S3FS_PRN_ERR("+++++++success upload file(%s)++++++++++++", path);           
+                S3FS_PRN_ERR("+++++++success upload file(%s)++++++++++++", strUploadFilePath);           
             }
             else
             {
-                S3FS_PRN_ERR("+++++++could not upload file(%s): result=%d+++++++++", path, result);
+                S3FS_PRN_ERR("+++++++could not upload file(%s): result=%d+++++++++", strUploadFilePath, result);
                 // if upload faild, push into the delay upload task map again.
                 is_need_retry = true;
             }
 
             FdManager::get()->Close(ent);
-            StatCache::getStatCacheData()->DelStat(path);
+            StatCache::getStatCacheData()->DelStat(strUploadFilePath);
         }
         else{
             is_need_retry = true;
@@ -2287,10 +2293,10 @@ static void delay_task_perform(void)
 
         if(is_need_retry){
             //push into the delay upload task map again.
-            S3FS_PRN_ERR("+++++++push into the delay upload task map again: file(%s)+++++++++", path, result);
+            S3FS_PRN_ERR("+++++++push into the delay upload task map again: file(%s)+++++++++", strUploadFilePath, result);
             uploadInfo.uploadInfo.delaySec = 10;
-            AutoLock auto_upload_lock(&uploading_map_lock);
-            uploading_map.insert(std::pair<std::string, struct UploadInfo>(path, uploadInfo));
+            AutoLock auto_upload_lock(&upload_task_map_lock);
+            upload_task_map.insert(std::pair<std::string, struct UploadInfo>(strUploadFilePath, uploadInfo));
         }     
 
     }else{
@@ -2316,11 +2322,11 @@ static int delay_upload(const char* path, int delaySec)
   }
   
   // check if ready to flush
-  AutoLock auto_upload_lock(&uploading_map_lock);
+  AutoLock auto_upload_lock(&upload_task_map_lock);
   std::map<std::string, struct UploadInfo >::iterator iter;
 
-  iter = uploading_map.find(path);
-  if(iter != uploading_map.end())
+  iter = upload_task_map.find(path);
+  if(iter != upload_task_map.end())
   {
     //已存在对应的下载任务，仅更新热点标示
     S3FS_PRN_ERR("+++++++++++DelayFlush : upload task already exits, just update uploadInfo+++++++++++"); 
@@ -2330,7 +2336,7 @@ static int delay_upload(const char* path, int delaySec)
   }
   else{
     // 没有已存在的下载任务，加入map
-    uploading_map.insert(std::pair<std::string, struct UploadInfo>(path, uploadInfo));
+    upload_task_map.insert(std::pair<std::string, struct UploadInfo>(path, uploadInfo));
     S3FS_PRN_ERR("+++++++++++DelayFlush : new upload task with file (%s) +++++++++++", path);
   }
 
@@ -2379,14 +2385,11 @@ static int s3fs_flush(const char* path, struct fuse_file_info* fi)
    // if(!enable_delay_flush || fileSize < min_szie_to_delay_uplaod){
      if(!enable_delay_flush){ 
       result = ent->Flush(false);
-
-      FdManager::get()->Close(ent);
     
-    }else{    
-    
+    }else{        
       //  
       int delaySec = fileSize / SIZE_FACTOR_UNIT + 1;
-      result = FdManager::get()->DelayFlush(ent, path, static_cast<int>(fi->fh), delaySec); 
+      result = delay_upload(path, delaySec); 
     
     }
 
@@ -2424,17 +2427,15 @@ static int s3fs_fsync(const char* path, int datasync, struct fuse_file_info* fi)
 
    // if(!enable_delay_flush || fileSize < min_szie_to_delay_uplaod){
     if(!enable_delay_flush){  
-      result = ent->Flush(false);
-
-      FdManager::get()->Close(ent);
+      result = ent->Flush(false);   
     
     }else{    
       
       int delaySec = fileSize / SIZE_FACTOR_UNIT + 1;
-      result = FdManager::get()->DelayFlush(ent, path, static_cast<int>(fi->fh), delaySec); 
+      result = delay_upload(path, delaySec);
     
     }
-
+    FdManager::get()->Close(ent);
   }
 
   S3FS_MALLOCTRIM(0);
@@ -3600,6 +3601,8 @@ static void create_fulsh_work_thread(void)
 
     for(int i = 0; i < delay_upload_work_thread_num; i++)
     {
+        pthread_mutex_init(&upload_task_map_lock, NULL);
+
         rc = pthread_create(&thread, NULL, delay_task_perform_wrapper, NULL);
         if (rc != 0) {
           // success = false;
