@@ -1771,6 +1771,7 @@ void FdEntity::CleanupCache()
 
   if (IsWattingDelayUpload()) {
     // this cahce file has not been uploaed, just can not be removed.
+    S3FS_PRN_ERR("file(%d) is waiting for uploading, cache file should not be clean.", fd);
     return;
   }
 
@@ -2285,6 +2286,9 @@ void FdManager::CleanupCacheDirInternal(const std::string & path)
     }
   }
   closedir(dp);
+  // add by morven
+  rmdir(abs_path);
+  // end of add
 }
 
 /*

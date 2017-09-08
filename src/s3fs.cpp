@@ -2262,10 +2262,10 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
     FdEntity*   ent = NULL;
     if(bReadyToUpload)
     {
-	headers_t   meta;
-  	struct stat stobj;
+	      headers_t   meta;
+  	    struct stat stobj;
         
-	bReadyToUpload = false;
+	      bReadyToUpload = false;
         result = get_object_attribute(strUploadFilePath.c_str(), &stobj, &meta);
         if (-ENOENT == result) {
           //the obj has been delete , so just cancel this task.
@@ -2285,8 +2285,6 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
         }
 	
 	      if(ent){
-            // update cachestatfile delay_upload flag
-            ent->FinishDelayUpload();
             FdManager::get()->Close(ent);
             StatCache::getStatCacheData()->DelStat(strUploadFilePath.c_str());
 	      }
@@ -2296,18 +2294,20 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
 	     sleep(1);
     }
 
-   if(is_need_retry){
-            //push into the delay upload task map again.
-            S3FS_PRN_ERR("+++++++push into the delay upload task map again: file(%s)+++++++++", strUploadFilePath.c_str());
-            // update cachestatfile delay_upload flag
-           if(ent){
-		ent->PareDelayUpload();
-	   }
+    if(is_need_retry){
+        //push into the delay upload task map again.
+        S3FS_PRN_ERR("+++++++push into the delay upload task map again: file(%s)+++++++++", strUploadFilePath.c_str());
 
-            uploadInfo.delaySec = 10;
-            AutoLock auto_upload_lock(&upload_task_map_lock);
-            upload_task_map.insert(std::pair<std::string, struct UploadInfo>(strUploadFilePath, uploadInfo));     
+        uploadInfo.delaySec = 10;
+        AutoLock auto_upload_lock(&upload_task_map_lock);
+        upload_task_map.insert(std::pair<std::string, struct UploadInfo>(strUploadFilePath, uploadInfo));     
+    }else{
+        // update cachestatfile delay_upload flag
+        if(ent){
+            ent->FinishDelayUpload();
+        }
     }
+
   }
 }
 
