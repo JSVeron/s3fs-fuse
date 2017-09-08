@@ -516,7 +516,7 @@ bool PageList::Serialize(CacheFileStat& file, bool is_output)
     ssall << Size();
 
     // add by morven
-    ssall << "\n" << (true == isWaittingUpload) ? "1" : "0";
+    ssall << "\n" <<((true == isWaittingUpload) ? "1" : "0");
     // end of add
 
     for (fdpage_list_t::iterator iter = pages.begin(); iter != pages.end(); ++iter) {
@@ -577,7 +577,7 @@ bool PageList::Serialize(CacheFileStat& file, bool is_output)
       return false;
     }
 
-    isWaittingUpload = (1 == s3fs_strtoofft(part.c_str()) ? true : false);
+    isWaittingUpload = (1 == s3fs_strtoofft(oneline.c_str()) ? true : false);
     // end of add
 
     // load each part

@@ -2259,10 +2259,9 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
     pthread_mutex_unlock(&upload_task_map_lock);	
 
     bool is_need_retry = false;
-
+    FdEntity*   ent = NULL;
     if(bReadyToUpload)
     {
-        FdEntity*   ent = NULL;
 	headers_t   meta;
   	struct stat stobj;
         
@@ -2301,7 +2300,9 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
             //push into the delay upload task map again.
             S3FS_PRN_ERR("+++++++push into the delay upload task map again: file(%s)+++++++++", strUploadFilePath.c_str());
             // update cachestatfile delay_upload flag
-            ent->PareDelayUpload();
+           if(ent){
+		ent->PareDelayUpload();
+	   }
 
             uploadInfo.delaySec = 10;
             AutoLock auto_upload_lock(&upload_task_map_lock);
@@ -3705,7 +3706,7 @@ static void s3fs_destroy(void*)
   s3fs_destroy_global_ssl();
 
   // add by morven
-  pthread_mutex_destroy(&uploading_map_lock);
+  pthread_mutex_destroy(&upload_task_map_lock);
   // end of add
 }
 

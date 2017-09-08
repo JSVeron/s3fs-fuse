@@ -94,8 +94,8 @@ public:
     size_t Size(void) const;
     bool Resize(size_t size, bool is_loaded);
     // add by morven
-    bool getWaitingFlag(){ return isWaittingUpload};
-    void setWaitingFlag(bool is_waitting_upload){ isWaittingUpload = is_waitting_upload};
+    bool getWaitingFlag(){ return isWaittingUpload; }
+    void setWaitingFlag(bool is_waitting_upload){ isWaittingUpload = is_waitting_upload; }
     // end of add
 
     bool IsPageLoaded(off_t start = 0, size_t size = 0) const;                  // size=0 is checking to end of list
