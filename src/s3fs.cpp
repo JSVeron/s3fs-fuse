@@ -2284,7 +2284,9 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
                 is_need_retry = true;
         }
 	
-	      if(ent){
+	if(ent){
+        // update cachestatfile delay_upload flag
+            ent->FinishDelayUpload();
             FdManager::get()->Close(ent);
             StatCache::getStatCacheData()->DelStat(strUploadFilePath.c_str());
 	      }
@@ -2300,14 +2302,7 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
 
         uploadInfo.delaySec = 10;
         AutoLock auto_upload_lock(&upload_task_map_lock);
-        upload_task_map.insert(std::pair<std::string, struct UploadInfo>(strUploadFilePath, uploadInfo));     
-    }else{
-        // update cachestatfile delay_upload flag
-        if(ent){
-            ent->FinishDelayUpload();
-        }
-    }
-
+     }
   }
 }
 

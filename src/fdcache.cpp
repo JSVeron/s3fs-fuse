@@ -272,7 +272,7 @@ bool PageList::Init(size_t size, bool is_loaded)
 {
   Clear();
   // add by morven
-  isWaittingUpload = false;
+//  isWaittingUpload = false;
   // end of add
   fdpage* page = new fdpage(0, size, is_loaded);
   pages.push_back(page);
@@ -522,6 +522,9 @@ bool PageList::Serialize(CacheFileStat& file, bool is_output)
     for (fdpage_list_t::iterator iter = pages.begin(); iter != pages.end(); ++iter) {
       ssall << "\n" << (*iter)->offset << ":" << (*iter)->bytes << ":" << ((*iter)->loaded ? "1" : "0");
     }
+    // add by morven
+    S3FS_PRN_ERR("++++++++ Serialize  output++++++++++");
+    S3FS_PRN_ERR("%s", ssall.str().c_str());
 
     string strall = ssall.str();
     if (0 >= pwrite(file.GetFd(), strall.c_str(), strall.length(), 0)) {
@@ -559,7 +562,11 @@ bool PageList::Serialize(CacheFileStat& file, bool is_output)
     string       oneline;
     stringstream ssall(ptmp);
 
-    // loaded
+    // add by morven	
+    S3FS_PRN_ERR("++++++++ Serialize  load++++++++++");
+    S3FS_PRN_ERR("%s",ssall.str().c_str());
+    
+     // loaded
     Clear();
 
     // load(size)
@@ -576,8 +583,10 @@ bool PageList::Serialize(CacheFileStat& file, bool is_output)
       free(ptmp);
       return false;
     }
-
+	
+    S3FS_PRN_ERR("++++++++ %s ++++++++++", oneline.c_str());
     isWaittingUpload = (1 == s3fs_strtoofft(oneline.c_str()) ? true : false);
+    S3FS_PRN_ERR("++++++++ %s ++++++++++" ,((true == isWaittingUpload) ? "1" : "0"));
     // end of add
 
     // load each part
@@ -1596,6 +1605,7 @@ void FdEntity::FinishDelayUpload()
 
 bool FdEntity::IsWattingDelayUpload()
 {
+    S3FS_PRN_DBG("+++++++++check if obj has not benn uploaded+++++++++");
     return pagelist.getWaitingFlag();
 }
 // end of add
@@ -1704,7 +1714,10 @@ ssize_t FdEntity::Write(const char* bytes, off_t start, size_t size)
       }
     } else {
       // no enough disk space
-      if (0 != (result = NoCachePreMultipartPost())) {
+      // need to cleanup cache file right now ?
+      return -ENOSPC;
+     /* 
+     if (0 != (result = NoCachePreMultipartPost())) {
         S3FS_PRN_ERR("failed to switch multipart uploading with no cache(errno=%d)", result);
         return static_cast<ssize_t>(result);
       }
@@ -1715,6 +1728,7 @@ ssize_t FdEntity::Write(const char* bytes, off_t start, size_t size)
       }
       mp_start = start;
       mp_size  = 0;
+      */
     }
   } else {
     // already start multipart uploading
@@ -1763,13 +1777,13 @@ void FdEntity::CleanupCache()
   if (!auto_lock.isLockAcquired()) {
     return;
   }
-
+/*
   if (is_modify) {
     // cache is not commited to s3, cannot cleanup
     return;
   }
-
-  if (IsWattingDelayUpload()) {
+*/
+  if (is_modify || IsWattingDelayUpload()) {
     // this cahce file has not been uploaed, just can not be removed.
     S3FS_PRN_ERR("file(%d) is waiting for uploading, cache file should not be clean.", fd);
     return;
@@ -2287,7 +2301,7 @@ void FdManager::CleanupCacheDirInternal(const std::string & path)
   }
   closedir(dp);
   // add by morven
-  rmdir(abs_path);
+  rmdir(abs_path.c_str());
   // end of add
 }
 
