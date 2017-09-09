@@ -43,7 +43,7 @@ public:
     explicit CacheFileStat(const char* tpath = NULL);
     ~CacheFileStat();
 
-    bool Open(void);
+    bool Open(bool is_create);
     bool Release(void);
     bool SetPath(const char* tpath, bool is_open = true);
     int GetFd(void) const { return fd; }
@@ -104,7 +104,7 @@ public:
     size_t GetTotalUnloadedPageSize(off_t start = 0, size_t size = 0) const;    // size=0 is checking to end of list
     int GetUnloadedPages(fdpage_list_t& unloaded_list, off_t start = 0, size_t size = 0) const;  // size=0 is checking to end of list
 
-    bool Serialize(CacheFileStat& file, bool is_output);
+    bool Serialize(CacheFileStat& file, bool is_output, bool is_create = true);
     void Dump(void);
 };
 

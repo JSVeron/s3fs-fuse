@@ -180,7 +180,7 @@ bool CacheFileStat::SetPath(const char* tpath, bool is_open)
   return Open();
 }
 
-bool CacheFileStat::Open(void)
+bool CacheFileStat::Open(bool is_create)
 {
   if (0 == path.size()) {
     return false;
@@ -195,8 +195,15 @@ bool CacheFileStat::Open(void)
     S3FS_PRN_ERR("failed to create cache stat file path(%s)", path.c_str());
     return false;
   }
+
+  int open_flag = O_RDWR;
+  if(is_create)
+  {
+      open_flag |= O_CREAT;
+  }
+
   // open
-  if (-1 == (fd = open(sfile_path.c_str(), O_CREAT | O_RDWR, 0600))) {
+  if (-1 == (fd = open(sfile_path.c_str(), open_flag, 0600))) {
     S3FS_PRN_ERR("failed to open cache stat file path(%s) - errno(%d)", path.c_str(), errno);
     return false;
   }
@@ -503,9 +510,9 @@ int PageList::GetUnloadedPages(fdpage_list_t& unloaded_list, off_t start, size_t
   return unloaded_list.size();
 }
 
-bool PageList::Serialize(CacheFileStat& file, bool is_output)
+bool PageList::Serialize(CacheFileStat& file, bool is_output, bool is_create)
 {
-  if (!file.Open()) {
+  if (!file.Open(is_create)) {
     return false;
   }
   if (is_output) {
@@ -737,7 +744,7 @@ void FdEntity::Close(void)
     if (0 == refcnt) {
       if (0 != cachepath.size()) {
         CacheFileStat cfstat(path.c_str());
-        if (!pagelist.Serialize(cfstat, true)) {
+        if (!pagelist.Serialize(cfstat, true, false)) {
           S3FS_PRN_WARN("failed to save cache stat file(%s).", path.c_str());
         }
       }
