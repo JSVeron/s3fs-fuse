@@ -153,7 +153,9 @@ bool CacheFileStat::DeleteCacheFileStatDirectory(void)
 CacheFileStat::CacheFileStat(const char* tpath) : path(""), fd(-1)
 {
   if (tpath && '\0' != tpath[0]) {
-    SetPath(tpath, true);
+//    SetPath(tpath, true);
+//    add by morven
+      SetPath(tpath, false);
   }
 }
 
@@ -177,7 +179,7 @@ bool CacheFileStat::SetPath(const char* tpath, bool is_open)
   if (!is_open) {
     return true;
   }
-  return Open();
+  return Open(true);
 }
 
 bool CacheFileStat::Open(bool is_create)
@@ -742,6 +744,7 @@ void FdEntity::Close(void)
       refcnt--;
     }
     if (0 == refcnt) {
+S3FS_PRN_WARN("++++++++++ time to take back fd : file(%s).++++++++", path.c_str());
       if (0 != cachepath.size()) {
         CacheFileStat cfstat(path.c_str());
         if (!pagelist.Serialize(cfstat, true, false)) {
@@ -773,6 +776,7 @@ int FdEntity::Dup(bool no_fd_lock_wait)
     if (!auto_lock.isLockAcquired()) {
       return -1;
     }
+    S3FS_PRN_DBG("+++++++++++++++ refcnt++ , then [path=%s][fd=%d][refcnt=%d]+++++++++++", path.c_str(), fd, (-1 != fd ? refcnt + 1 : refcnt));
     refcnt++;
   }
   return fd;

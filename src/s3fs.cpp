@@ -1114,7 +1114,7 @@ static int s3fs_rmdir(const char* path)
 {
   int result;
   string strpath;
-  struct stat stbuf;
+  //struct stat stbuf;
 
   S3FS_PRN_INFO("[path=%s]", path);
 
@@ -1136,6 +1136,9 @@ static int s3fs_rmdir(const char* path)
   s3fscurl.DestroyCurlHandle();
   StatCache::getStatCacheData()->DelStat(strpath.c_str());
 
+  rmdir(path);
+  
+  /*
   // double check for old version(before 1.63)
   // The old version makes "dir" object, newer version makes "dir/".
   // A case, there is only "dir", the first removing object is "dir/".
@@ -1161,6 +1164,7 @@ static int s3fs_rmdir(const char* path)
     strpath += "_$folder$";
     result   = s3fscurl.DeleteRequest(strpath.c_str());
   }
+  */
   S3FS_MALLOCTRIM(0);
 
   return result;
@@ -2218,6 +2222,39 @@ static bool check_if_ready_to_upload(const struct timespec& lastRequestTime, con
   }
   return ((lastRequestTime.tv_sec + delaySec) < nowts.tv_sec);
 }
+static int delay_upload(const char* path, int delaySec)
+{
+  S3FS_PRN_ERR("[path=%s][delaySec=%jd s]", SAFESTRPTR(path), (intmax_t)delaySec);
+  struct UploadInfo uploadInfo;
+  
+ // uploadInfo.existfd = existfd; //
+  uploadInfo.delaySec = (time_t)delaySec; //update delayTime
+ 
+  //update lastRequestTime
+  if(-1 == clock_gettime(CLOCK_MONOTONIC_COARSE, &uploadInfo.lastRequestTime)){
+  uploadInfo.lastRequestTime.tv_sec  = time(NULL);
+  uploadInfo.lastRequestTime.tv_nsec = 0;
+   }
+  
+// check if ready to flush
+  AutoLock auto_upload_lock(&upload_task_map_lock);
+  std::map<std::string, struct UploadInfo >::iterator iter;
+	
+  iter = upload_task_map.find(path);
+  if(iter != upload_task_map.end())
+  {
+   //已存在对应的下载任务，仅更新热点标示
+     S3FS_PRN_ERR("+++++++++++DelayFlush : upload task already exits, just update uploadInfo+++++++++++"); 
+     iter->second = uploadInfo;
+  }
+  else{
+     // 没有已存在的下载任务，加入map
+     upload_task_map.insert(std::pair<std::string, struct UploadInfo>(path, uploadInfo));
+     S3FS_PRN_ERR("+++++++++++DelayFlush : new upload task with file (%s) +++++++++++", path);
+  }
+
+ return 0;
+}
 
 static void delay_task_perform(void)
 {
@@ -2258,7 +2295,7 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
     // unlock the uploading_map
     pthread_mutex_unlock(&upload_task_map_lock);	
 
-    bool is_need_retry = false;
+    //bool is_need_retry = false;
     FdEntity*   ent = NULL;
     if(bReadyToUpload)
     {
@@ -2276,17 +2313,19 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
                 && 0 == (result = ent->RowFlush(strUploadFilePath.c_str(), true))) 
         {
                 S3FS_PRN_ERR("+++++++success upload file(%s)++++++++++++", strUploadFilePath.c_str());           
+       		ent->FinishDelayUpload();
         }
         else
         {
                 S3FS_PRN_ERR("+++++++could not upload file(%s): result=%d+++++++++", strUploadFilePath.c_str(), result);
                 // if upload faild, push into the delay upload task map again.
-                is_need_retry = true;
+               // is_need_retry = true;
+              delay_upload(strUploadFilePath.c_str(), 10); 
         }
 	
 	if(ent){
         // update cachestatfile delay_upload flag
-            ent->FinishDelayUpload();
+            //ent->FinishDelayUpload();
             FdManager::get()->Close(ent);
             StatCache::getStatCacheData()->DelStat(strUploadFilePath.c_str());
 	      }
@@ -2295,7 +2334,7 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
 	 // no task is ready, so sleep awhile         
 	     sleep(1);
     }
-
+/*
     if(is_need_retry){
         //push into the delay upload task map again.
         S3FS_PRN_ERR("+++++++push into the delay upload task map again: file(%s)+++++++++", strUploadFilePath.c_str());
@@ -2303,9 +2342,11 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
         uploadInfo.delaySec = 10;
         AutoLock auto_upload_lock(&upload_task_map_lock);
      }
+*/
   }
 }
 
+/*
 static int delay_upload(const char* path, int delaySec)
 {
   S3FS_PRN_ERR("[path=%s][delaySec=%jd s]", SAFESTRPTR(path), (intmax_t)delaySec);
@@ -2341,7 +2382,7 @@ static int delay_upload(const char* path, int delaySec)
 
   return 0;
 }
-
+*/
 void * delay_task_perform_wrapper(void* arg) {
 
     S3FS_PRN_ERR("++++++++++++++Entry of delay_task_perform_wrapper +++++++++++++");
