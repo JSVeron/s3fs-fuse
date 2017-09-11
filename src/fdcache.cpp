@@ -1692,6 +1692,11 @@ ssize_t FdEntity::Write(const char* bytes, off_t start, size_t size)
   if (-1 == fd) {
     return -EBADF;
   }
+  // add by morven
+  if (!is_modify) {
+    is_modify = true;
+  }
+  // end of add
   // check if not enough disk space left BEFORE locking fd
   if (FdManager::IsCacheDir() && !FdManager::IsSafeDiskSpace(NULL, size)) {
     FdManager::get()->CleanupCacheDir();
@@ -1750,9 +1755,9 @@ ssize_t FdEntity::Write(const char* bytes, off_t start, size_t size)
     S3FS_PRN_ERR("pwrite failed. errno(%d)", errno);
     return -errno;
   }
-  if (!is_modify) {
-    is_modify = true;
-  }
+//  if (!is_modify) {
+//    is_modify = true;
+//  }
   if (0 < wsize) {
     pagelist.SetPageLoadedStatus(start, static_cast<size_t>(wsize), true);
   }
@@ -2300,6 +2305,8 @@ void FdManager::CleanupCacheDirInternal(const std::string & path)
     string next_path = path + "/" + dent->d_name;
     if (S_ISDIR(st.st_mode)) {
       CleanupCacheDirInternal(next_path);
+      // Try to cache dir as soon as dir is empty.
+      rmdir(fullpath.c_str());
     } else {
       FdEntity* ent;
       if (NULL == (ent = FdManager::get()->Open(next_path.c_str(), NULL, -1, -1, false, true, true))) {
@@ -2313,6 +2320,8 @@ void FdManager::CleanupCacheDirInternal(const std::string & path)
   closedir(dp);
   // add by morven
   rmdir(abs_path.c_str());
+  std::string    abs_stat_path = cache_dir + "/." + bucket + ".stat" + path;
+  rmdir(abs_stat_path.c_str());
   // end of add
 }
 
