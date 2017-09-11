@@ -104,8 +104,8 @@ s3fs_log_level debug_level        = S3FS_LOG_CRIT;
 const char*    s3fs_log_nest[S3FS_LOG_NEST_MAX] = {"", "  ", "    ", "      "};
 
 // add by morven
-off_t min_szie_to_delay_uplaod = 524288; //when/ "enable_delay_flush" is true, and file size (M) is bigger than that will be delay upload.
-int delay_upload_work_thread_num = 2;
+off_t min_szie_to_delay_uplaod = 5242880; //when/ "enable_delay_flush" is true, and file size (M) is bigger than that will be delay upload.
+int delay_upload_work_thread_num = 3;
 //int delay_upload_work_thread_num = 2;
 bool enable_delay_flush = false;
 bool enable_permission_insensitive = false;

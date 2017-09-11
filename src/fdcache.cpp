@@ -2300,6 +2300,8 @@ void FdManager::CleanupCacheDirInternal(const std::string & path)
     string next_path = path + "/" + dent->d_name;
     if (S_ISDIR(st.st_mode)) {
       CleanupCacheDirInternal(next_path);
+      // Try to cache dir as soon as dir is empty.
+      rmdir(fullpath.c_str());
     } else {
       FdEntity* ent;
       if (NULL == (ent = FdManager::get()->Open(next_path.c_str(), NULL, -1, -1, false, true, true))) {
