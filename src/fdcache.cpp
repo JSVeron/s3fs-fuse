@@ -2263,6 +2263,75 @@ bool FdManager::ChangeEntityToTempPath(FdEntity * ent, const char* path)
   return false;
 }
 
+// add by morven 
+// // [NOTE]
+// // If remove mirror file directory, it should do before service ready.
+bool FdManager::DeleteCacheMirrorDirectory(void)
+{
+  string top_path = FdManager::GetCacheDir();
+
+  if (top_path.empty() || bucket.empty()) {
+    return true;
+  }
+  top_path       += "/.";
+  top_path       += bucket;
+  top_path       += ".mirror";
+  return delete_files_in_dir(top_path.c_str(), true);
+}
+
+void FdManager::GetUnfinishedUploadTasks(unfinised_task_list_t &unfinished_list)
+{
+  if (!FdManager::IsCacheDir()) {
+    return;
+  }
+
+  GetUnfinishedTaskInternal("", unfinished_list);
+}
+void FdManager::GetUnfinishedTaskInternal(const std::string & path, unfinised_task_list_t &unfinished_list)
+{
+  DIR*           dp;
+  struct dirent* dent;
+  std::string    abs_path = cache_dir + "/" + bucket + path;
+
+  if (NULL == (dp = opendir(abs_path.c_str()))) {
+    S3FS_PRN_ERR("could not open cache dir(%s) - errno(%d)", abs_path.c_str(), errno);
+    return;
+  }
+  for (dent = readdir(dp); dent; dent = readdir(dp)) {
+    if (0 == strcmp(dent->d_name, "..") || 0 == strcmp(dent->d_name, ".")) {
+      continue;
+    }
+    string   fullpath = abs_path;
+    fullpath         += "/";
+    fullpath         += dent->d_name;
+    struct stat st;
+    if (0 != lstat(fullpath.c_str(), &st)) {
+      S3FS_PRN_ERR("could not get stats of file(%s) - errno(%d)", fullpath.c_str(), errno);
+      closedir(dp);
+      return;
+    }
+    string next_path = path + "/" + dent->d_name;
+    if (S_ISDIR(st.st_mode)) {
+      GetUnfinishedTaskInternal(next_path, unfinished_list);
+      } else {
+      	FdEntity* ent;
+      	if (NULL == (ent = FdManager::get()->Open(next_path.c_str(), NULL, -1, -1, false, true, true))) {
+            continue;
+      	}
+
+      	if(ent->IsWattingDelayUpload())
+      	{
+	  unfinished_list.push_back(next_path);
+          S3FS_PRN_ERR("file(%s) has not been uploaded, need to recover", next_path.c_str());
+      	}
+      
+        Close(ent);
+    }
+  }
+  closedir(dp);
+}
+// end of add
+
 void FdManager::CleanupCacheDir()
 {
   if (!FdManager::IsCacheDir()) {

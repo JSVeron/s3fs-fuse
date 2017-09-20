@@ -194,6 +194,7 @@ struct UploadInfo{
     time_t          delaySec;
     struct timespec lastRequestTime; 
 };
+typedef std::list<std::string> unfinised_task_list_t;
 // ==========================================
 
 //------------------------------------------------
@@ -218,14 +219,13 @@ private:
 private:
     static fsblkcnt_t GetFreeDiskSpace(const char* path);
     void CleanupCacheDirInternal(const std::string &path = "");
-
+    void GetUnfinishedTaskInternal(const std::string & path, unfinised_task_list_t &unfinished_list);
 public:
     FdManager();
     ~FdManager();
 
     // Reference singleton
     static FdManager* get(void) { return &singleton; }
-
     static bool DeleteCacheDirectory(void);
     static int DeleteCacheFile(const char* path);
     static bool SetCacheDir(const char* dir);
@@ -249,6 +249,10 @@ public:
     bool Close(FdEntity* ent);
     bool ChangeEntityToTempPath(FdEntity* ent, const char* path);
     void CleanupCacheDir();
+    // add by morven
+    void GetUnfinishedUploadTasks(unfinised_task_list_t &unfinished_list);
+    bool DeleteCacheMirrorDirectory(void);
+   // end of add
 };
 
 #endif // FD_CACHE_H_

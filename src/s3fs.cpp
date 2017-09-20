@@ -2345,9 +2345,27 @@ S3FS_PRN_ERR("++++++++++++++++++!!!!!!!!!!!!!!!! +++++++++++++");
 */
   }
 }
+void recovery_upload_task(void)
+{
+  unfinised_task_list_t unfinished_list;
+  unfinised_task_list_t::iterator iter;
 
+  FdManager::get()->GetUnfinishedUploadTasks(unfinished_list);
+
+  for(iter = unfinished_list.begin(); iter != unfinished_list.end(); ++iter){
+      
+      S3FS_PRN_ERR("+++++++add upload task for recovery, file(%s)+++++++++", (*iter).c_str());
+      delay_upload((*iter).c_str(), 1);
+  }
+
+  // clean up mirror dir, since files left there can not been used anymore.
+  if(!FdManager::get()->DeleteCacheMirrorDirectory())
+  {
+      S3FS_PRN_ERR("+++++++ faild to clean up cache mirror dir+++++++++");
+  }
+  return;
+}
 /*
-static int delay_upload(const char* path, int delaySec)
 {
   S3FS_PRN_ERR("[path=%s][delaySec=%jd s]", SAFESTRPTR(path), (intmax_t)delaySec);
   struct UploadInfo uploadInfo;
@@ -2605,7 +2623,7 @@ static int readdir_multi_head(const char* path, S3ObjList& head, void* buf, fuse
   // Initialize S3fsMultiCurl
   curlmulti.SetSuccessCallback(multi_head_callback);
   curlmulti.SetRetryCallback(multi_head_retry_callback);
-
+  
   // Loop
   while (!headlist.empty()) {
     s3obj_list_t::iterator iter;
@@ -3712,7 +3730,8 @@ static void* s3fs_init(struct fuse_conn_info* conn)
   if(enable_delay_flush)
   {
       create_fulsh_work_thread();
-      //return;
+	recovery_upload_task();     
+ //return;
   }
 
 
@@ -3927,9 +3946,9 @@ static bool get_uncomp_mp_list(xmlDocPtr doc, uncomp_mp_list_t& list)
 
     // search "Initiated" tag
     if (NULL == (ex_value = get_exp_value_xml(doc, ctx, ex_date.c_str()))) {
-      continue;
+     // continue;
     }
-    part.date = (char*)ex_value;
+    //part.date = (char*)ex_value;
     S3FS_XMLFREE(ex_value);
 
     list.push_back(part);
