@@ -70,7 +70,7 @@ string get_realpath(const char *path) {
 // If name is terminated by "_$folder$", it is forced dir type.
 // If is_dir is true and name is not terminated by "/", the name is added "/".
 //
-bool S3ObjList::insert(const char* name, const char* etag, bool is_dir)
+bool S3ObjList::insert(const char* name,const char* size, const char* lastmodified, const char* etag, bool is_dir)
 {
   if(!name || '\0' == name[0]){
     return false;
@@ -123,6 +123,10 @@ bool S3ObjList::insert(const char* name, const char* etag, bool is_dir)
     if(etag){
       (*iter).second.etag = string(etag);  // over write
     }
+    // add by morven
+    (*iter).second.lastmodified = lastmodified;
+    (*iter).second.size = size;
+    // end of add
   }else{
     // add new object
     s3obj_entry newobject;
@@ -131,6 +135,10 @@ bool S3ObjList::insert(const char* name, const char* etag, bool is_dir)
     if(etag){
       newobject.etag = etag;
     }
+    // add by morven
+    newobject.lastmodified = lastmodified;
+    newobject.size = size;
+    // end of add
     objects[newname] = newobject;
   }
 
@@ -218,6 +226,34 @@ string S3ObjList::GetETag(const char* name) const
   }
   return ps3obj->etag;
 }
+
+// add by morven
+string S3ObjList::GetSize(const char* name) const
+{
+  const s3obj_entry* ps3obj;
+
+  if(!name || '\0' == name[0]){
+    return string("");
+  }
+  if(NULL == (ps3obj = GetS3Obj(name))){
+    return string("");
+  }
+  return ps3obj->size;
+}
+
+string S3ObjList::GetLastmodified(const char* name) const
+{
+  const s3obj_entry* ps3obj;
+
+  if(!name || '\0' == name[0]){
+    return string("");
+  }
+  if(NULL == (ps3obj = GetS3Obj(name))){
+    return string("");
+  }
+  return ps3obj->lastmodified;
+}
+// end of add
 
 bool S3ObjList::IsDir(const char* name) const
 {

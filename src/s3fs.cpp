@@ -163,8 +163,13 @@ static int readdir_multi_head(const char* path, S3ObjList& head, void* buf, fuse
 static int list_bucket(const char* path, S3ObjList& head, const char* delimiter, bool check_content_only = false);
 static int directory_empty(const char* path);
 static bool is_truncated(xmlDocPtr doc);
+//static int append_objects_from_xml_ex(const char* path, xmlDocPtr doc, xmlXPathContextPtr ctx,
+ //                                     const char* ex_contents, const char* ex_key, const char* ex_etag, int isCPrefix, S3ObjList& head);
+
+// add by morven
 static int append_objects_from_xml_ex(const char* path, xmlDocPtr doc, xmlXPathContextPtr ctx,
-                                      const char* ex_contents, const char* ex_key, const char* ex_etag, int isCPrefix, S3ObjList& head);
+                                     const char* ex_contents, const char* ex_key, const char* ex_size, const char* ex_lastModified, const char* ex_etag, int isCPrefix, S3ObjList& head);
+// end of add
 static int append_objects_from_xml(const char* path, xmlDocPtr doc, S3ObjList& head);
 static bool GetXmlNsUrl(xmlDocPtr doc, string& nsurl);
 static xmlChar* get_base_exp(xmlDocPtr doc, const char* exp);
@@ -2607,7 +2612,44 @@ static S3fsCurl* multi_head_retry_callback(S3fsCurl* s3fscurl)
 
   return newcurl;
 }
+// add by morven
 
+static int readdir_multi_head(const char* path, S3ObjList& head, void* buf, fuse_fill_dir_t filler)
+{
+  //S3fsMultiCurl curlmulti;
+  s3obj_list_t  headlist;
+  //s3obj_list_t  fillerlist;
+  int           result = 0;
+
+  S3FS_PRN_INFO1("[path=%s][list=%zu]", path, headlist.size());
+
+  // Make base path list.
+  head.GetNameList(headlist, true, false);  // get name with "/".
+
+  for (iter = headlist.begin(), cnt = 0; headlist.end() != iter; iter = headlist.erase(iter)) {
+      
+      string disppath = path + (*iter);
+
+      struct stat st;
+      memset(&st, 0, sizeof(struct stat));
+      st.st_nlink = 1; // see fuse FAQ
+      st.st_blksize = 4096;
+      st.st_size = get_size(head.GetSize());
+      st.st_mtime = get_lastmodified(head.GetLastmodified());
+
+
+      string fillpath = disppath;
+      if ('/' == disppath[disppath.length() - 1]) {
+        fillpath = fillpath.substr(0, fillpath.length() - 1);
+      }
+
+      filler(buf, fillpath.c_str(), 0, 0);
+  }
+
+  return result;
+}
+//
+/*
 static int readdir_multi_head(const char* path, S3ObjList& head, void* buf, fuse_fill_dir_t filler)
 {
   S3fsMultiCurl curlmulti;
@@ -2695,7 +2737,7 @@ static int readdir_multi_head(const char* path, S3ObjList& head, void* buf, fuse
   }
   return result;
 }
-
+*/
 static int s3fs_readdir(const char* path, void* buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info* fi)
 {
   S3ObjList head;
@@ -2973,6 +3015,10 @@ static int append_objects_from_xml(const char* path, xmlDocPtr doc, S3ObjList& h
     ex_cprefix += "s3:";
     ex_prefix  += "s3:";
     ex_etag    += "s3:";
+    // add by morven
+    ex_size    += "s3:";
+    ex_lastModified    += "s3:";
+    // end of add
   }
   ex_contents += "Contents";
   ex_key     += "Key";
@@ -2980,8 +3026,14 @@ static int append_objects_from_xml(const char* path, xmlDocPtr doc, S3ObjList& h
   ex_prefix  += "Prefix";
   ex_etag    += "ETag";
 
-  if (-1 == append_objects_from_xml_ex(prefix.c_str(), doc, ctx, ex_contents.c_str(), ex_key.c_str(), ex_etag.c_str(), 0, head) ||
-      -1 == append_objects_from_xml_ex(prefix.c_str(), doc, ctx, ex_cprefix.c_str(), ex_prefix.c_str(), NULL, 1, head) )
+  // add by morven
+  ex_size += "Size";
+  ex_lastModified += "LastModified";
+  // end of add
+
+
+  if (-1 == append_objects_from_xml_ex(prefix.c_str(), doc, ctx, ex_contents.c_str(), ex_key.c_str(), ex_size.c_str(), ex_lastModified.c_str(), ex_etag.c_str(), 0, head) ||
+      -1 == append_objects_from_xml_ex(prefix.c_str(), doc, ctx, ex_cprefix.c_str(), ex_prefix.c_str(), ex_size.c_str(), ex_lastModified.c_str(),  NULL, 1, head) )
   {
     S3FS_PRN_ERR("append_objects_from_xml_ex returns with error.");
     S3FS_XMLXPATHFREECONTEXT(ctx);
